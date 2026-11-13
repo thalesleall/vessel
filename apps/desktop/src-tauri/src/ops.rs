@@ -196,23 +196,52 @@ pub async fn open_ssh_plan(
     Ok(info)
 }
 
+/// A local or SOCKS listener other machines on the network can use (an open, password-less
+/// tunnel). Remote forwards listen on the server and follow its `GatewayPorts` setting.
+pub fn forward_exposed(rule: &vessel_client::model::PortForward) -> bool {
+    use vessel_client::model::ForwardKind;
+    let bind = rule.bind_address.trim();
+    let loopback = bind.is_empty()
+        || bind.eq_ignore_ascii_case("localhost")
+        || bind
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback());
+    !matches!(rule.kind, ForwardKind::Remote) && !loopback
+}
+
+/// `allow_exposed`: the user confirmed a rule that listens beyond this computer (the app asks
+/// first); agents never get to open one.
 pub async fn start_forward(
     state: &AppState,
     rule_id: Uuid,
     trust_new: bool,
+    allow_exposed: bool,
 ) -> CmdResult<ForwardStatus> {
     let (rule, plan) = {
         let vessel = state.vessel.lock().await;
-        let Some(Entity::PortForward(rule)) = vessel.find(rule_id)?.map(|i| i.entity) else {
+        let Some((rule_vault, Entity::PortForward(rule))) =
+            vessel.find(rule_id)?.map(|i| (i.vault_id, i.entity))
+        else {
             return Err(CmdError::new(
                 "not_found",
                 "Regra de redirecionamento não encontrada.",
             ));
         };
+        if !allow_exposed && forward_exposed(&rule) {
+            return Err(CmdError::new(
+                "forward_exposed",
+                format!(
+                    "A regra escuta em {}:{}, aberta para a rede. Só o usuário pode iniciá-la, no app.",
+                    rule.bind_address, rule.bind_port
+                ),
+            ));
+        }
         let host_id = rule
             .host_id
             .ok_or_else(|| CmdError::new("invalid", "A regra não tem host."))?;
-        let plan = ssh::plan(&vessel, host_id)?;
+        let plan = ssh::plan_from(&vessel, Some(rule_vault), host_id)?;
         (rule, plan)
     };
     let conn = ssh::connect(&plan, trust_new).await?;
@@ -221,4 +250,31 @@ pub async fn start_forward(
         state.changed();
     }
     state.forwards.start(rule_id, rule, conn).await
+}
+
+#[cfg(test)]
+mod forward_tests {
+    use super::forward_exposed;
+    use vessel_client::model::{ForwardKind, PortForward};
+
+    fn rule(kind: ForwardKind, bind: &str) -> PortForward {
+        PortForward {
+            kind,
+            bind_address: bind.into(),
+            bind_port: 1080,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn only_loopback_listeners_are_private() {
+        for bind in ["", "127.0.0.1", "127.0.0.2", "localhost", "LOCALHOST", "::1", "[::1]"] {
+            assert!(!forward_exposed(&rule(ForwardKind::Dynamic, bind)), "{bind}");
+        }
+        for bind in ["0.0.0.0", "::", "192.168.1.5", "example.com"] {
+            assert!(forward_exposed(&rule(ForwardKind::Dynamic, bind)), "{bind}");
+            assert!(forward_exposed(&rule(ForwardKind::Local, bind)), "{bind}");
+        }
+        assert!(!forward_exposed(&rule(ForwardKind::Remote, "0.0.0.0")));
+    }
 }

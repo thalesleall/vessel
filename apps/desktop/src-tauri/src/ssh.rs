@@ -27,6 +27,10 @@ pub struct Hop {
     pub key: Option<(String, Option<String>)>,
     pub known_fingerprint: Option<String>,
     pub keepalive: Option<u32>,
+    /// Label of a credential stored in another vault than this host's (for example a personal
+    /// identity on a host of a shared vault). Whoever can edit the host can point it at their
+    /// own server, so the first connection says whose credential will be sent.
+    pub borrowed_credential: Option<String>,
 }
 
 impl Hop {
@@ -59,10 +63,18 @@ impl<'a> Scope<'a> {
         }
     }
 
-    /// A reference made by an item stored in `origin`.
+    /// A reference made by an item stored in `origin`: its own vault first, then the personal
+    /// vault, then any other vault holding that id exactly once. An id present in several vaults
+    /// never resolves outside the first two, so nobody can shadow a record of another vault.
     fn get(&self, origin: Uuid, id: Uuid) -> Option<&'a vessel_client::Item> {
         let in_vault = |v: Uuid| self.items.iter().find(|i| i.id == id && i.vault_id == v);
-        in_vault(origin).or_else(|| self.personal.and_then(in_vault))
+        in_vault(origin)
+            .or_else(|| self.personal.and_then(in_vault))
+            .or_else(|| {
+                let mut all = self.items.iter().filter(|i| i.id == id);
+                let first = all.next();
+                if all.next().is_some() { None } else { first }
+            })
     }
 
     /// An entry point chosen by the user (the host they clicked). Refuses an id present in
@@ -137,12 +149,24 @@ fn hop_for(scope: &Scope, origin: Uuid, host: &Host) -> CmdResult<Hop> {
             .and_then(|i| i.ssh_key_id)
             .map(|id| (identity_vault.unwrap_or(origin), id))
     });
+    let mut borrowed_credential = None;
     let key = key_ref.and_then(|(o, id)| match find(o, id) {
-        Some((_, Entity::SshKey(k))) if !k.private_key.trim().is_empty() => {
+        Some((vault, Entity::SshKey(k))) if !k.private_key.trim().is_empty() => {
+            if vault != origin {
+                borrowed_credential = Some(format!("a chave \"{}\"", k.label));
+            }
             Some((k.private_key.clone(), k.passphrase.clone()))
         }
         _ => None,
     });
+    let identity_password_used = host.password.as_deref().is_none_or(str::is_empty)
+        && identity.as_ref().is_some_and(|i| i.password.is_some());
+    if identity_vault.is_some_and(|v| v != origin)
+        && (identity_password_used || borrowed_credential.is_some())
+        && let Some(i) = &identity
+    {
+        borrowed_credential = Some(format!("a identidade \"{}\"", i.label));
+    }
     let port = host.effective_port();
     let known_fingerprint = scope.pin(&format!("{}:{port}", host.address));
     Ok(Hop {
@@ -158,18 +182,31 @@ fn hop_for(scope: &Scope, origin: Uuid, host: &Host) -> CmdResult<Hop> {
         key,
         known_fingerprint,
         keepalive: host.keepalive_secs,
+        borrowed_credential,
     })
 }
 
 /// Resolves a host (and its jump chain) into a connection plan.
 pub fn plan(vessel: &Vessel, host_id: Uuid) -> CmdResult<Plan> {
+    plan_from(vessel, None, host_id)
+}
+
+/// Like [`plan`], for a host referenced by an item of vault `origin` (a port-forward rule):
+/// the reference resolves like any other one (see [`Scope::get`]).
+pub fn plan_from(vessel: &Vessel, origin: Option<Uuid>, host_id: Uuid) -> CmdResult<Plan> {
     let items = vessel.items(None)?;
     let scope = Scope::new(&items, vessel);
     let as_host = |item: &vessel_client::Item| match &item.entity {
         Entity::Host(h) => Ok((item.vault_id, h.clone())),
         _ => Err(CmdError::new("not_found", "Host não encontrado.")),
     };
-    let (target_vault, target) = as_host(scope.entry(host_id)?)?;
+    let entry = match origin {
+        Some(o) => scope
+            .get(o, host_id)
+            .ok_or_else(|| CmdError::new("not_found", "Host não encontrado."))?,
+        None => scope.entry(host_id)?,
+    };
+    let (target_vault, target) = as_host(entry)?;
     if target.address.trim().is_empty() {
         return Err(CmdError::new("invalid", "O host não tem endereço."));
     }
@@ -440,7 +477,7 @@ fn host_key_error(hop: &Hop, seen: Option<NewHostKey>) -> Option<CmdError> {
         ),
         None => Some(
             CmdError::new("host_key_unknown", format!("Primeira conexão com {}. Confirme a impressão digital do servidor.", seen.host))
-                .with_details(json!({ "host": seen.host, "fingerprint": seen.fingerprint, "key_type": seen.key_type })),
+                .with_details(json!({ "host": seen.host, "fingerprint": seen.fingerprint, "key_type": seen.key_type, "borrowed": hop.borrowed_credential })),
         ),
         _ => None,
     }

@@ -79,7 +79,7 @@ export async function openShell(shell: Shell) {
   }
 }
 
-interface HostKeyQuestion { hostId: string; host: string; fingerprint: string; keyType: string; changed: boolean; expected?: string; onTrust?: () => void }
+interface HostKeyQuestion { hostId: string; host: string; fingerprint: string; keyType: string; changed: boolean; expected?: string; borrowed?: string | null; onTrust?: () => void }
 const [hostKeyQuestion, setHostKeyQuestion] = createSignal<HostKeyQuestion | null>(null);
 const [connecting, setConnecting] = createSignal<string | null>(null);
 export { connecting };
@@ -93,7 +93,7 @@ export async function withHostKeyCheck(hostId: string, action: (trustNew: boolea
     const d = (e as { details?: Record<string, string> }).details ?? {};
     if (code === "host_key_unknown") {
       setHostKeyQuestion({
-        hostId, host: d.host, fingerprint: d.fingerprint, keyType: d.key_type, changed: false,
+        hostId, host: d.host, fingerprint: d.fingerprint, keyType: d.key_type, changed: false, borrowed: d.borrowed,
         onTrust: () => action(true).catch((err) => toast(errorMessage(err), "error")),
       });
     } else if (code === "host_key_changed") {
@@ -136,6 +136,12 @@ export function HostKeyPrompt() {
                   Se a mudança for esperada, apague o host conhecido em Chaves → Hosts conhecidos e conecte de novo.</span>
               </div>
               <div class="field"><span class="field-label">Esperada</span><div class="code-block">{q().expected}</div></div>
+            </Show>
+            <Show when={!q().changed && q().borrowed}>
+              <div class="callout callout-danger" role="alert"><Icon name="alert" />
+                <span>Este host está em outro cofre que {q().borrowed}, que será enviada a <b>{q().host}</b>.
+                  Quem pode editar o host escolhe o endereço: só confie se você reconhece este servidor.</span>
+              </div>
             </Show>
             <div class="field"><span class="field-label">{q().changed ? "Recebida" : `Impressão digital (${q().keyType})`}</span>
               <div class="code-block">{q().fingerprint}</div></div>

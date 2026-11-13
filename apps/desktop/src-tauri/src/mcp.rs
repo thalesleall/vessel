@@ -594,7 +594,7 @@ fn tool_definitions() -> Vec<Value> {
         tool(
             "start_port_forward",
             "Start port forward",
-            "Start a saved port forwarding rule.",
+            "Start a saved port forwarding rule. Rules listening beyond localhost (open to the network) can only be started by the user in the app.",
             json!({ "rule_id": id }),
             &["rule_id"],
             false,
@@ -1207,7 +1207,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
         "start_port_forward" => {
             let id = arg_uuid(args, "rule_id")?;
             // As with connect_ssh, new host keys are confirmed only by the user, in the app.
-            let status = ops::start_forward(state, id, false).await.map_err(err)?;
+            let status = ops::start_forward(state, id, false, false).await.map_err(err)?;
             Ok(serde_json::to_value(status).unwrap_or_default())
         }
         "stop_port_forward" => {

@@ -566,7 +566,7 @@ pub async fn start_forward(
     rule_id: Uuid,
     trust_new: bool,
 ) -> CmdResult<ForwardStatus> {
-    ops::start_forward(&state, rule_id, trust_new).await
+    ops::start_forward(&state, rule_id, trust_new, true).await
 }
 
 #[tauri::command]

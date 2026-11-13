@@ -119,6 +119,7 @@ fn material(k: &AccountKeys) -> AccountKeyMaterial {
 
 /// Fetches `GET /v1/server/info` from a server URL the user typed.
 pub async fn server_info(url: &str) -> Result<ServerInfo> {
+    api::require_secure_transport(url)?;
     let api = Api::new(url)?;
     let info: ServerInfo = api
         .public::<(), _>(Method::GET, "/v1/server/info", None)

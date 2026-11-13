@@ -79,17 +79,44 @@ pub fn router(state: AppState) -> Router {
 
 /// Client IP for rate limiting, honoring `X-Forwarded-For` only when configured to.
 pub fn client_ip(state: &AppState, headers: &HeaderMap, peer: &ConnectInfo<SocketAddr>) -> IpAddr {
-    if state.config.trust_proxy {
-        let forwarded = headers
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            // The rightmost entry is the one the trusted proxy appended; entries to its left
-            // are whatever the client sent.
-            .and_then(|v| v.split(',').next_back())
-            .and_then(|v| v.trim().parse().ok());
-        if let Some(ip) = forwarded {
-            return ip;
-        }
+    forwarded_ip(state.config.trust_proxy, headers).unwrap_or(peer.0.ip())
+}
+
+/// With `hops` trusted proxies, each appends the address it saw: the client is the `hops`-th
+/// entry from the right. Entries further left are whatever the client sent.
+fn forwarded_ip(hops: usize, headers: &HeaderMap) -> Option<IpAddr> {
+    if hops == 0 {
+        return None;
     }
-    peer.0.ip()
+    let all: Vec<&str> = headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .collect();
+    all.len()
+        .checked_sub(hops)
+        .and_then(|i| all[i].trim().parse().ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn xff(v: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("x-forwarded-for", v.parse().unwrap());
+        h
+    }
+
+    #[test]
+    fn client_ip_counts_trusted_proxies_from_the_right() {
+        let spoofed = xff("6.6.6.6, 203.0.113.7, 198.51.100.1");
+        assert_eq!(forwarded_ip(0, &spoofed), None);
+        assert_eq!(forwarded_ip(1, &spoofed), "198.51.100.1".parse().ok());
+        // A CDN in front of Caddy: the CDN appended the client, Caddy appended the CDN.
+        assert_eq!(forwarded_ip(2, &spoofed), "203.0.113.7".parse().ok());
+        // Fewer entries than proxies: the header is not trusted.
+        assert_eq!(forwarded_ip(4, &spoofed), None);
+    }
 }

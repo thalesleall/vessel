@@ -41,19 +41,6 @@ pub struct Api {
 impl Api {
     pub fn new(base_url: &str) -> Result<Self> {
         let base = normalize_url(base_url);
-        // Plain HTTP only to this computer (tests, a local lab): elsewhere a network attacker
-        // would see access tokens and could act as the server.
-        if let Some(rest) = base.strip_prefix("http://") {
-            let local = rest.starts_with("[::1]") || {
-                let host = rest.split(['/', ':']).next().unwrap_or_default();
-                host == "localhost" || host.ends_with(".localhost") || host.starts_with("127.")
-            };
-            if !local {
-                return Err(ClientError::invalid(
-                    "use an https:// address for the sync server (plain http is only allowed for localhost)",
-                ));
-            }
-        }
         let http = reqwest::Client::builder()
             .user_agent(concat!("vessel/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
@@ -222,11 +209,76 @@ impl Api {
 }
 
 /// `https://Host:443/` → `https://host:443`; adds `https://` when no scheme is given.
+/// Refuses plain HTTP to anything but this computer (tests, a local lab): elsewhere a network
+/// attacker would see access tokens and could act as the server. Checked when the user types a
+/// server address, not when a saved profile loads, so an older install keeps starting.
+pub fn require_secure_transport(base_url: &str) -> Result<()> {
+    let base = normalize_url(base_url);
+    let url = reqwest::Url::parse(&base)
+        .map_err(|_| ClientError::invalid("the sync server address is not a valid URL"))?;
+    if url.scheme() == "https" {
+        return Ok(());
+    }
+    let local = url.scheme() == "http"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && match url.host() {
+            Some(url::Host::Domain(d)) => {
+                let d = d.to_ascii_lowercase();
+                d == "localhost" || d.ends_with(".localhost")
+            }
+            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+            None => false,
+        };
+    if local {
+        Ok(())
+    } else {
+        Err(ClientError::invalid(
+            "use an https:// address for the sync server (plain http is only allowed for localhost)",
+        ))
+    }
+}
+
 pub fn normalize_url(url: &str) -> String {
     let url = url.trim().trim_end_matches('/');
     if url.starts_with("http://") || url.starts_with("https://") {
         url.to_string()
     } else {
         format!("https://{url}")
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::require_secure_transport as check;
+
+    #[test]
+    fn plain_http_only_reaches_this_computer() {
+        for ok in [
+            "https://vessel.example.com",
+            "vessel.example.com",
+            "http://localhost:8080",
+            "http://LOCALHOST:8080/",
+            "http://agent.localhost",
+            "http://127.0.0.1:8080",
+            "http://127.9.9.9",
+            "http://[::1]:8080",
+        ] {
+            assert!(check(ok).is_ok(), "{ok} refused");
+        }
+        // Audit round 2: prefix matching let all of these reach another host over plain HTTP.
+        for bad in [
+            "http://192.168.1.10:8080",
+            "http://127.0.0.1@evil.com",
+            "http://127.0.0.1.evil.com",
+            "http://evil.com#.localhost",
+            "http://evil.com?.localhost",
+            "http://[::1]@evil.com",
+            "http://localhost@evil.com",
+            "http://user:pw@localhost",
+        ] {
+            assert!(check(bad).is_err(), "{bad} accepted");
+        }
     }
 }

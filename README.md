@@ -38,7 +38,7 @@ docker compose up -d
 
 A primeira conta criada vira administradora do servidor. Com `VESSEL_SIGNUPS=invite-only` (o padrão), as contas seguintes precisam de convite, gerado no app em Configurações → Administração do servidor. Convites para cofres também permitem o cadastro.
 
-Variáveis de ambiente: `VESSEL_PUBLIC_URL` (obrigatória; é também a identidade OPAQUE do servidor, então não a troque depois), `VESSEL_SIGNUPS` (`open`, `invite-only` ou `disabled`), `VESSEL_DATABASE`, `VESSEL_BIND`, `VESSEL_NAME`, `VESSEL_TRUST_PROXY` e `VESSEL_AUTH_RATE_PER_MIN`.
+Variáveis de ambiente: `VESSEL_PUBLIC_URL` (obrigatória; é também a identidade OPAQUE do servidor, então não a troque depois), `VESSEL_SIGNUPS` (`open`, `invite-only` ou `disabled`), `VESSEL_DATABASE`, `VESSEL_BIND`, `VESSEL_NAME`, `VESSEL_TRUST_PROXY` (quantos proxies reversos ficam na frente do agente: `true` ou `1` só com o Caddy, `2` com uma CDN ou balanceador antes dele) e `VESSEL_AUTH_RATE_PER_MIN`.
 
 Para testar localmente sem Docker:
 

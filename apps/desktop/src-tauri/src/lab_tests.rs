@@ -42,6 +42,7 @@ fn bastion() -> Hop {
         password: None,
         key: None,
         known_fingerprint: None,
+        borrowed_credential: None,
         keepalive: None,
     }
 }

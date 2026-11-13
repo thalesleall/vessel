@@ -18,8 +18,10 @@ pub struct Config {
     pub signups: SignupMode,
     /// `VESSEL_NAME`, shown in the app.
     pub name: String,
-    /// `VESSEL_TRUST_PROXY=true` to take client IPs from `X-Forwarded-For` (behind Caddy etc.).
-    pub trust_proxy: bool,
+    /// `VESSEL_TRUST_PROXY`: how many reverse proxies stand in front of the agent, each appending
+    /// to `X-Forwarded-For`. `true` or `1` for Caddy alone; `2` for a CDN or load balancer in
+    /// front of Caddy. 0 (default) ignores the header.
+    pub trust_proxy: usize,
     /// `VESSEL_AUTH_RATE_PER_MIN`, default 30. Auth requests per client IP per minute.
     pub auth_rate_per_min: u32,
 }
@@ -42,7 +44,13 @@ impl Config {
                 .into(),
             signups,
             name: var("VESSEL_NAME").unwrap_or_else(|| "Vessel".into()),
-            trust_proxy: var("VESSEL_TRUST_PROXY").is_some_and(|v| v == "true" || v == "1"),
+            trust_proxy: match var("VESSEL_TRUST_PROXY").as_deref() {
+                None | Some("false") => 0,
+                Some("true") => 1,
+                Some(n) => n
+                    .parse()
+                    .context("VESSEL_TRUST_PROXY must be true, false or a number of proxies")?,
+            },
             auth_rate_per_min: var("VESSEL_AUTH_RATE_PER_MIN")
                 .map(|v| v.parse())
                 .transpose()
@@ -59,7 +67,7 @@ impl Config {
             database: ":memory:".into(),
             signups: SignupMode::Open,
             name: "Vessel test".into(),
-            trust_proxy: false,
+            trust_proxy: 0,
             auth_rate_per_min: 10_000,
         }
     }
