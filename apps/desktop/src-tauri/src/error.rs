@@ -80,6 +80,8 @@ impl From<ClientError> for CmdError {
             ClientError::Api { code: vessel_client::ErrorCode::InvalidInvite, .. } => {
                 "Convite ou código de instalação inválido.".to_string()
             }
+            ClientError::Api { message, .. } => server_message_pt(message)
+                .map_or_else(|| message.clone(), str::to_string),
             other => other.to_string(),
         };
         Self::new(code, message)
@@ -114,4 +116,43 @@ impl From<serde_json::Error> for CmdError {
     fn from(e: serde_json::Error) -> Self {
         Self::new("invalid", format!("dados inválidos: {e}"))
     }
+}
+
+/// Portuguese for the agent's messages that reach people (the agent speaks English to every
+/// client; protocol-level messages that only a bug would show stay as they are).
+fn server_message_pt(message: &str) -> Option<&'static str> {
+    Some(match message {
+        "a rotation is already in progress" => "Já há uma troca de chave em andamento neste cofre.",
+        "admins only" => "Só administradores do cofre podem fazer isso.",
+        "an account with this e-mail already exists" => "Já existe uma conta com este e-mail.",
+        "authentication required" => "Sua sessão expirou. Entre de novo.",
+        "cannot invite an owner" => "Não dá para convidar alguém como dono.",
+        "clock skew too large; check the system time" => "O relógio deste computador está muito diferente do servidor. Acerte a data e a hora.",
+        "delete your own account from your account settings" => "Para excluir a sua própria conta, use Configurações → Conta.",
+        "device not found" => "Dispositivo não encontrado.",
+        "finish the key rotation first" => "Termine a troca de chave do cofre antes.",
+        "invalid e-mail address" => "E-mail inválido.",
+        "invite is invalid or expired" => "Convite inválido ou expirado.",
+        "leave the shared vaults you do not own first" => "Saia antes dos cofres compartilhados de outras pessoas.",
+        "login expired, start again" | "registration expired, start again" => "A operação demorou demais. Tente de novo.",
+        "make another account server admin first" => "Torne outra conta administradora do servidor antes de excluir a sua.",
+        "no such account" => "Conta não encontrada.",
+        "only the owner can delete a shared vault" => "Só o dono pode excluir um cofre compartilhado.",
+        "only the owner can invite admins" => "Só o dono pode convidar administradores.",
+        "read-only access to this vault" => "Você só tem acesso de leitura a este cofre.",
+        "server admin only" => "Só administradores do servidor podem fazer isso.",
+        "sign-ups require an invite" => "Este servidor só aceita contas novas com convite.",
+        "the first account needs the installation code from the server log" => "A primeira conta precisa do código de instalação que aparece no log do servidor.",
+        "the personal vault cannot be shared" => "O cofre pessoal não pode ser compartilhado.",
+        "the role is higher than the one in the invite" => "O papel é maior que o do convite.",
+        "the server is busy, try again in a minute" => "O servidor está ocupado. Tente de novo em um minuto.",
+        "the server needs at least one admin" => "O servidor precisa de pelo menos um administrador.",
+        "the user has not accepted an invite to this vault" => "Essa pessoa ainda não aceitou um convite para este cofre.",
+        "this vault's membership history is full" => "O histórico de membros deste cofre chegou ao limite.",
+        "too many attempts, try again in a minute" => "Tentativas demais. Espere um minuto.",
+        "vault not found" => "Cofre não encontrado.",
+        "you are already a member of this vault" => "Você já é membro deste cofre.",
+        "you cannot suspend your own account" => "Você não pode suspender a sua própria conta.",
+        _ => return None,
+    })
 }

@@ -195,3 +195,18 @@ async fn verified_keys_and_histories_reach_new_devices() {
     assert!(trust(&laptop).is_some());
     assert!(laptop.vaults().unwrap().iter().any(|v| v.id == vault));
 }
+
+/// When every account is deleted, the next one is a new first admin (and needs the code).
+#[tokio::test]
+async fn a_server_emptied_by_deletions_gets_a_new_first_admin() {
+    let code = "installation-code-0123456789";
+    let url = agent_with(|c| c.bootstrap_token = Some(code.into())).await;
+    let mut first = Vessel::in_memory().unwrap();
+    first.signup(&url, "first@example.com", PW, "pc", Some(code.into())).await.unwrap();
+    first.delete_account(PW).await.unwrap();
+    assert!(vessel_client::server_info(&url).await.unwrap().first_user);
+    let mut next = Vessel::in_memory().unwrap();
+    assert!(next.signup(&url, "next@example.com", PW, "pc", None).await.is_err());
+    next.signup(&url, "next@example.com", PW, "pc", Some(code.into())).await.unwrap();
+    assert!(next.status().is_server_admin || next.admin_users().await.is_ok());
+}

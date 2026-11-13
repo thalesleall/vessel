@@ -321,7 +321,9 @@ pub fn user_active(conn: &Connection, id: &Uuid) -> AppResult<bool> {
 }
 
 pub fn user_count(conn: &Connection) -> AppResult<i64> {
-    Ok(conn.query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))?)
+    // Deleted (pseudonymized) accounts do not count: a server whose accounts were all deleted
+    // needs a new first admin, with the installation code.
+    Ok(conn.query_row("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL", [], |r| r.get(0))?)
 }
 
 pub fn member_role(conn: &Connection, vault: &Uuid, user: &Uuid) -> AppResult<Option<Role>> {
