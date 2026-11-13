@@ -34,6 +34,11 @@ pub async fn run_sync(state: &AppState) {
     if !vessel.status().unlocked {
         return;
     }
+    if vessel.is_local() {
+        // No server: only finishes an interrupted import, if any.
+        let _ = vessel.sync().await;
+        return;
+    }
     let _ = state.app.emit("vessel://syncing", true);
     match vessel.sync().await {
         Ok(report) => {

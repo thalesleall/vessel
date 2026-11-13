@@ -46,7 +46,7 @@ export function HostsView() {
               <button class="chip" classList={{ on: group() === g.id }} onClick={() => setGroup(g.id)}
                 onDblClick={() => setEditingGroup(g)} title="Duplo clique para editar">
                 <Icon name="folder" size={13} />{g.entity.data.label}
-                <span style={{ color: "var(--text-faint)" }}>{hosts().filter((h) => h.entity.data.group_id === g.id).length}</span>
+                <span style={{ color: "var(--text-3)" }}>{hosts().filter((h) => h.entity.data.group_id === g.id).length}</span>
               </button>
             )}
           </For>

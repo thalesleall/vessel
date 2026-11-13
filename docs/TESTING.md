@@ -40,6 +40,22 @@ Outros comandos do `lab.ps1`:
 
 Instale o app pelo `target\release\bundle\nsis\Vessel_0.1.0_x64-setup.exe`. Para desenvolver, use `cd apps\desktop; npx tauri dev`.
 
+## 0.5 Modo local e migrações
+
+Para começar do zero, feche o app e apague `%APPDATA%\dev.vessel.desktop`.
+
+1. Abra o app. *Esperado:* a tela "Como você quer usar o Vessel?" com as duas opções ilustradas.
+2. Escolha **Só neste computador**, crie a senha e guarde a chave de recuperação.
+   - *Esperado:* o app abre com os perfis de terminal detectados, e o rodapé do menu mostra "Sem sincronização".
+3. Crie um host, uma chave e um snippet. Bloqueie (`Ctrl+L`) e desbloqueie.
+4. Na tela de desbloqueio, use **Esqueci a senha** com a chave de recuperação. *Esperado:* os dados continuam lá.
+5. **Configurações → Conectar a um servidor → Criar conta**, com `http://localhost:8080`.
+   - *Esperado:* o resumo mostra os itens enviados, o caminho do backup e uma **nova** chave de recuperação.
+   - *Esperado:* `lab.ps1 bot ...` ou um segundo PC na mesma conta vê os mesmos itens.
+6. **Configurações → Parar de sincronizar.** *Esperado:* todos os itens continuam visíveis, e a senha é a mesma.
+7. Repita o passo 5 com **Já tenho conta**. *Esperado:* nada duplicado ("Já existiam: N").
+8. Troque o tema em **Configurações → Aparência** (Sistema, Escuro, Claro). *Esperado:* a interface e os terminais mudam juntos.
+
 ## 1. Conta, bloqueio e recuperação
 
 1. **Conectar → Criar conta.** Servidor `http://localhost:8080`, seu e-mail e uma senha nova.

@@ -8,6 +8,7 @@ mod api;
 mod error;
 pub mod events;
 mod items;
+mod local;
 mod store;
 mod sync;
 mod vaults;
@@ -32,6 +33,7 @@ use vessel_protocol::*;
 pub use api::normalize_url;
 pub use error::{ClientError, Result};
 pub use items::{ConflictView, Item};
+pub use local::MigrationReport;
 pub use sync::SyncReport;
 pub use vaults::{MemberView, MembersView, PendingView, VaultView};
 pub use vessel_model as model;
@@ -56,6 +58,9 @@ struct Profile {
     /// [`DeviceSecrets`] sealed with the account key.
     device_secrets: Vec<u8>,
     is_server_admin: bool,
+    /// Local-only mode: no server; `server_url`/`server_id` are empty.
+    #[serde(default)]
+    local: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -81,6 +86,8 @@ pub struct Status {
     pub device_id: Option<Uuid>,
     pub fingerprint: Option<String>,
     pub is_server_admin: bool,
+    /// Local-only mode: everything stays on this computer, nothing syncs.
+    pub local: bool,
 }
 
 pub struct Vessel {
@@ -88,6 +95,8 @@ pub struct Vessel {
     api: Option<Api>,
     profile: Option<Profile>,
     unlocked: Option<Unlocked>,
+    /// (imported, skipped duplicates) by imports since the last migration started.
+    import_stats: (usize, usize),
 }
 
 fn account_keys(m: &AccountKeyMaterial) -> AccountKeys {
@@ -136,6 +145,7 @@ impl Vessel {
         let profile: Option<Profile> = store.get(PROFILE_KEY)?;
         let api = profile
             .as_ref()
+            .filter(|p| !p.local)
             .map(|p| Api::new(&p.server_url))
             .transpose()?;
         Ok(Self {
@@ -143,6 +153,7 @@ impl Vessel {
             api,
             profile,
             unlocked: None,
+            import_stats: (0, 0),
         })
     }
 
@@ -157,13 +168,22 @@ impl Vessel {
             device_id: p.map(|p| p.device_id),
             fingerprint: p.map(|p| p.material.public_keys.fingerprint().to_string()),
             is_server_admin: p.is_some_and(|p| p.is_server_admin),
+            local: p.is_some_and(|p| p.local),
         }
     }
 
     // -- accessors used by the submodules ----------------------------------------------------
 
     fn api(&self) -> Result<&Api> {
+        if self.is_local() {
+            return Err(ClientError::LocalMode);
+        }
         self.api.as_ref().ok_or(ClientError::NotSignedIn)
+    }
+
+    /// Whether this device runs without a sync server.
+    pub fn is_local(&self) -> bool {
+        self.profile.as_ref().is_some_and(|p| p.local)
     }
 
     fn profile(&self) -> Result<&Profile> {
@@ -280,8 +300,17 @@ impl Vessel {
                 }),
             )
             .await?;
-        self.finish_auth(api, info, email, password, auth, account, device_key)
-            .await?;
+        self.finish_auth(
+            api,
+            info,
+            email,
+            password,
+            auth,
+            account,
+            device_key,
+            Vec::new(),
+        )
+        .await?;
         Ok(recovery.to_string())
     }
 
@@ -292,6 +321,19 @@ impl Vessel {
         email: &str,
         password: &str,
         device_name: &str,
+    ) -> Result<()> {
+        self.login_with(server_url, email, password, device_name, Vec::new())
+            .await
+    }
+
+    /// Login that also carries `carry` (items from local mode) into the account.
+    pub(crate) async fn login_with(
+        &mut self,
+        server_url: &str,
+        email: &str,
+        password: &str,
+        device_name: &str,
+        carry: Vec<(Uuid, vessel_model::Entity)>,
     ) -> Result<()> {
         let info = server_info(server_url).await?;
         let email = normalize_email(email);
@@ -339,7 +381,7 @@ impl Vessel {
             )
             .await?;
         let account = unlock_with_master(&material(&auth.account), &out.master_kek)?;
-        self.finish_auth(api, info, email, password, auth, account, device_key)
+        self.finish_auth(api, info, email, password, auth, account, device_key, carry)
             .await
     }
 
@@ -397,8 +439,17 @@ impl Vessel {
                 }),
             )
             .await?;
-        self.finish_auth(api, info, email, new_password, auth, account, device_key)
-            .await
+        self.finish_auth(
+            api,
+            info,
+            email,
+            new_password,
+            auth,
+            account,
+            device_key,
+            Vec::new(),
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -411,6 +462,7 @@ impl Vessel {
         auth: AuthResponse,
         account: UnlockedAccount,
         device_key: DeviceKey,
+        carry: Vec<(Uuid, vessel_model::Entity)>,
     ) -> Result<()> {
         let material = material(&auth.account);
         if account.keys.public() != material.public_keys {
@@ -437,6 +489,7 @@ impl Vessel {
             )?,
             material,
             is_server_admin: false,
+            local: false,
         };
         api.set_session(
             auth.device_id,
@@ -456,6 +509,9 @@ impl Vessel {
             account,
             vault_keys: HashMap::new(),
         });
+        // Items brought from local mode wait in an encrypted queue until the personal vault
+        // arrives; a crash before the import finishes resumes on the next sync.
+        self.queue_import(carry)?;
 
         if let Ok(info) = self.api()?.get::<AccountResponse>("/v1/account").await
             && let Some(p) = self.profile.as_mut()
@@ -489,19 +545,11 @@ impl Vessel {
         )?;
         let secrets: DeviceSecrets = serde_json::from_slice(&secrets_raw)?;
         let device_key = DeviceKey::from_seed(&secrets.device_seed)?;
-        let mut unlocked = Unlocked {
-            account,
-            vault_keys: HashMap::new(),
-        };
-        for summary in self.store.vaults()? {
-            if let Some(cached) = self
-                .store
-                .vault_blob::<GrantsResponse>(&summary.vault_id, store::VaultColumn::Grants)?
-            {
-                vaults::open_grants(&mut unlocked, profile.user_id, summary.vault_id, &cached);
-            }
+        self.install_unlocked(profile.user_id, account)?;
+        if profile.local {
+            self.resume_import()?;
+            return Ok(());
         }
-        self.unlocked = Some(unlocked);
         let api = self.api.as_ref().ok_or(ClientError::NotSignedIn)?;
         let refresh = secrets.refresh_token;
         // Setting the session is async only because of the mutex; nothing is sent here.
@@ -512,6 +560,24 @@ impl Vessel {
             None,
         ))
         .ok_or_else(|| ClientError::invalid("session busy"))?;
+        Ok(())
+    }
+
+    /// Opens the cached vault grants with `account` and keeps both in memory.
+    fn install_unlocked(&mut self, user_id: Uuid, account: UnlockedAccount) -> Result<()> {
+        let mut unlocked = Unlocked {
+            account,
+            vault_keys: HashMap::new(),
+        };
+        for summary in self.store.vaults()? {
+            if let Some(cached) = self
+                .store
+                .vault_blob::<GrantsResponse>(&summary.vault_id, store::VaultColumn::Grants)?
+            {
+                vaults::open_grants(&mut unlocked, user_id, summary.vault_id, &cached);
+            }
+        }
+        self.unlocked = Some(unlocked);
         Ok(())
     }
 
@@ -555,6 +621,16 @@ impl Vessel {
             &profile.material,
         )
         .map_err(|_| ClientError::WrongPassword)?;
+        if profile.local {
+            let account = &self.unlocked()?.account;
+            let local =
+                create_local_unlock(account, new_password.as_bytes(), KdfParams::default())?;
+            let mut profile = profile;
+            profile.local_unlock = local;
+            self.store.set(PROFILE_KEY, &profile)?;
+            self.profile = Some(profile);
+            return Ok(());
+        }
         let identity = OpaqueIdentity {
             user: profile.email.as_bytes(),
             server: profile.server_id.as_bytes(),

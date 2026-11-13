@@ -41,15 +41,29 @@ const sessions = [
   { id: id(91), title: "api-prod-01", kind: { kind: "ssh", host_id: id(1), address: "deploy@10.0.1.11:22" }, alive: true, created_at: 2, by_agent: true },
 ];
 
+// ?mock (server account), ?mock=local (local-only), ?mock=welcome (first run).
+const mockMode = new URLSearchParams(location.search).get("mock") || "server";
+let signedIn = mockMode !== "welcome";
+let localMode = mockMode === "local" || mockMode === "welcome";
+
 const status = () => ({
-  signed_in: true, unlocked, email: "ana@exemplo.com", server_url: "https://vessel.exemplo.com",
-  user_id: id(100), device_id: id(101), fingerprint: "04821 99130 57702 31468 80915", is_server_admin: true,
+  signed_in: signedIn, unlocked: signedIn && unlocked,
+  email: localMode ? "Ana" : "ana@exemplo.com", server_url: localMode ? "" : "https://vessel.exemplo.com",
+  user_id: id(100), device_id: id(101), fingerprint: "04821 99130 57702 31468 80915", is_server_admin: !localMode, local: localMode,
 });
+const recoveryKey = "A1B2-C3D4-E5F6-0718-293A-4B5C-6D7E-8F90-1A2B-3C4D-5E6F-7081-92A3-B4C5-D6E7-F809";
+const outcome = () => ({ imported: 14, skipped_duplicates: 3, recovery_key: localMode ? null : recoveryKey, backup_path: "C:\Users\ana\AppData\Roaming\dev.vessel.desktop\backups\vessel-1794540000-antes-de-conectar.db", status: status() });
 
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   status,
   local_settings: () => ({ last_server_url: "https://vessel.exemplo.com", last_email: "ana@exemplo.com", mcp_enabled: true, mcp_port: 47011, mcp_token: "vsl_9fK2mQ7xZpL0aB3cD5eF7gH9iJ1kL3mN5oP7qR9sT1u", mcp_allow_terminal_input: true, mcp_allow_writes: true }),
   unlock: () => { unlocked = true; return status(); },
+  create_local: () => { signedIn = true; localMode = true; unlocked = true; return recoveryKey; },
+  recover_local: () => { unlocked = true; return status(); },
+  server_info: () => ({ name: "Vessel", version: "0.1.0", api_version: 1, server_id: "vessel.exemplo.com", signups: "open", first_user: false }),
+  connect_new_account: () => { localMode = false; return outcome(); },
+  connect_existing_account: () => { localMode = false; const o = outcome(); o.recovery_key = null; return o; },
+  disconnect_to_local: () => { localMode = true; return outcome(); },
   lock: () => { unlocked = false; return status(); },
   items: (a) => (a.kind ? items.filter((i) => i.entity.type === a.kind) : items),
   vaults: () => [

@@ -1,5 +1,5 @@
 import { Match, Switch, createEffect, on, onMount } from "solid-js";
-import { Connect, Unlock } from "./auth";
+import { Onboarding, Unlock } from "./auth";
 import { Workspace } from "./layout";
 import { refreshData, refreshStatus, status, wireEvents } from "./store";
 import { ConfirmHost, Toasts } from "./ui";
@@ -18,7 +18,7 @@ export default function App() {
           <div class="auth"><span class="spinner" /></div>
         </Match>
         <Match when={!status()!.signed_in}>
-          <Connect />
+          <Onboarding />
         </Match>
         <Match when={!status()!.unlocked}>
           <Unlock />

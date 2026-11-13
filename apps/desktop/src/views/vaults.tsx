@@ -1,6 +1,6 @@
 import { For, Show, createResource, createSignal } from "solid-js";
 import { api, roleLabel, type InviteResponse, type Role, type VaultView } from "../api";
-import { attempt, copy, items, refreshData, status, toast, vaults } from "../store";
+import { attempt, copy, items, refreshData, setSection, status, toast, vaults } from "../store";
 import { Badge, Button, Empty, Field, Icon, Modal, colorFor, confirmAction, initials } from "../ui";
 
 export function VaultsView() {
@@ -10,6 +10,17 @@ export function VaultsView() {
   const count = (id: string) => items().filter((i) => i.vault_id === id).length;
   const vault = () => vaults().find((v) => v.id === selected()) ?? null;
 
+  if (status()?.local) {
+    return (
+      <>
+        <div class="page-head"><h1>Cofres e times</h1></div>
+        <Empty icon="users" title="Compartilhar precisa de um servidor">
+          <span>Neste computador tudo fica no seu cofre pessoal. Com um servidor conectado você cria cofres e divide hosts, chaves e snippets com um time.</span>
+          <Button variant="primary" icon="cloud" onClick={() => setSection("settings")}>Conectar a um servidor</Button>
+        </Empty>
+      </>
+    );
+  }
   return (
     <>
       <div class="page-head">
@@ -23,11 +34,11 @@ export function VaultsView() {
       <div class="grid">
         <For each={vaults()}>
           {(v) => (
-            <div class="card" onClick={() => setSelected(v.id)} style={{ "border-color": selected() === v.id ? "var(--accent)" : undefined }}>
+            <div class="card" onClick={() => setSelected(v.id)} style={{ "border-color": selected() === v.id ? "var(--structure)" : undefined }}>
               <div class="avatar" style={{ background: v.color || colorFor(v.name) }}><Icon name={v.personal ? "lock" : "users"} size={18} /></div>
               <div class="meta">
                 <div class="name">{v.name}</div>
-                <div class="sub">{count(v.id)} itens · {v.personal ? "pessoal" : `${v.member_count} membro(s)`}</div>
+                <div class="sub">{count(v.id)} itens, {v.personal ? "pessoal" : `${v.member_count} membro(s)`}</div>
               </div>
               <Badge tone={v.role === "owner" ? "blue" : "gray"}>{roleLabel[v.role]}</Badge>
               <Show when={v.rotating}><Badge tone="amber">trocando chave</Badge></Show>

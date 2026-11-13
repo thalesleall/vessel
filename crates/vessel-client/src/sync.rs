@@ -24,6 +24,11 @@ impl Vessel {
     pub async fn sync(&mut self) -> Result<SyncReport> {
         self.unlocked()?;
         let mut report = SyncReport::default();
+        if self.is_local() {
+            // Nothing to sync with; just finish any interrupted import.
+            self.resume_import()?;
+            return Ok(report);
+        }
         let remote: Vec<VaultSummary> = self.api()?.get("/v1/vaults").await?;
         let remote_ids: BTreeSet<Uuid> = remote.iter().map(|v| v.vault_id).collect();
         for local in self.store.vaults()? {
@@ -60,6 +65,14 @@ impl Vessel {
             {
                 tracing::warn!(%vault, "rotation still in progress: {e}");
             }
+        }
+        // Items carried over from local mode go into the personal vault once it exists here.
+        if self.resume_import()? > 0
+            && let Ok(personal) = self.personal_vault()
+        {
+            let (pushed, conflicts) = self.push_vault(personal).await?;
+            report.pushed += pushed;
+            report.conflicts += conflicts;
         }
         self.persist_session().await?;
         Ok(report)

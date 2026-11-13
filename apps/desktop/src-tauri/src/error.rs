@@ -40,6 +40,7 @@ impl From<ClientError> for CmdError {
         let code = match &e {
             ClientError::Locked => "locked",
             ClientError::NotSignedIn => "signed_out",
+            ClientError::LocalMode => "local_mode",
             ClientError::WrongPassword => "wrong_password",
             ClientError::KeyChanged { .. } => "key_changed",
             ClientError::Api { .. } if e.is_unauthorized() => "unauthorized",
@@ -51,6 +52,10 @@ impl From<ClientError> for CmdError {
         let message = match &e {
             ClientError::Locked => "O Vessel está bloqueado.".to_string(),
             ClientError::NotSignedIn => "Nenhuma conta conectada.".to_string(),
+            ClientError::LocalMode => {
+                "Isso precisa de um servidor de sincronização. Conecte um em Configurações."
+                    .to_string()
+            }
             ClientError::WrongPassword => "Senha incorreta.".to_string(),
             ClientError::KeyChanged { email } => {
                 format!(

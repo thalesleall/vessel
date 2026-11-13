@@ -18,6 +18,7 @@ Este documento continua sendo a referência do desenho. A primeira implementaç�
 | Recuperação de senha | Só a chave de recuperação embrulha o AK | Também um **token de autenticação derivado da chave** (`HKDF(RK)`); o servidor guarda `SHA-256(token)` e libera o re-registro OPAQUE | Sem isso, quem esqueceu a senha não consegue nem se autenticar. |
 | Divisão de painéis no terminal | Previsto | Ainda não (abas, sim) | Próxima iteração. |
 | Agentes de IA | Não previsto | **Servidor MCP nativo no desktop** (§14) | Pedido durante a implementação. |
+| Uso sem servidor | Não previsto | **Modo local** com migração nos dois sentidos (§15) | Para quem não quer manter um agente. |
 
 ---
 
@@ -554,3 +555,33 @@ O app desktop embute um servidor **MCP** (Model Context Protocol) para que agent
 - **Aceitar uma chave de host *alterada*:** é sempre recusado. Uma chave *nova* só é aceita com `trust_new_host_key: true`, e as instruções do servidor pedem que o agente confirme isso com o usuário.
 
 Limitação conhecida: um agente com permissão de digitar no terminal pode rodar comandos que leiam arquivos de credenciais *no servidor remoto* (ex.: `cat ~/.ssh/id_rsa`). A proteção do Vessel cobre os segredos guardados no cofre, não o que o terminal remoto expõe. Desligue "permitir digitar nos terminais" quando isso importar.
+
+---
+
+## 15. Modo local (sem servidor) e migrações
+
+O app pode ser usado sem agente. Na primeira execução a pessoa escolhe entre "Só neste computador" e "Sincronizar com um servidor".
+
+### 15.1 Como o modo local funciona
+
+- A conta local usa a **mesma hierarquia de chaves** do modo servidor: chave da conta (AK), chaves X25519/Ed25519 e um cofre pessoal com chave própria. Os registros são cifrados no disco exatamente como seriam no servidor.
+- A senha desbloqueia o AK por Argon2id, do mesmo jeito que o desbloqueio offline (§6.3). Não há OPAQUE, porque não há servidor.
+- A **chave de recuperação** embrulha o AK. Em modo local ela redefine a senha direto no dispositivo (`recover_local`).
+- O perfil guarda `local: true`. Sync vira no-op, e tudo o que precisa de servidor (cofres compartilhados, dispositivos, convites) responde `LocalMode`.
+
+### 15.2 Migrações
+
+| Caminho | O que acontece | Senha e chave de recuperação |
+|---|---|---|
+| Local → conta nova | A conta é registrada no servidor **com as mesmas chaves**; os itens vão para o cofre pessoal | A senha escolhida vira a da conta. É emitida uma **nova** chave de recuperação, porque o servidor precisa de uma prova derivada dela (§0) e o app não guarda a antiga |
+| Local → conta existente | Login normal; os itens locais são **somados** ao cofre pessoal da conta | Passam a valer as da conta |
+| Servidor → local | O dispositivo fica com uma cópia de tudo o que enxerga, incluindo cofres compartilhados, num cofre pessoal local | Continuam as mesmas |
+
+Garantias contra perda de dados:
+
+1. **Backup antes de tudo.** O app grava uma cópia cifrada do banco em `backups/` (`VACUUM INTO`) antes de qualquer migração.
+2. **Fila de importação cifrada.** Os itens são decifrados em memória e gravados numa fila (`import_queue`, selada com o AK) no banco novo antes de qualquer sync. Se o app fechar no meio, a importação continua no próximo desbloqueio ou sync.
+3. **Sem duplicatas.** Um item com conteúdo idêntico a um já existente não é copiado, e as referências a ele (ex.: o perfil de uma aba de workspace) passam a apontar para a cópia que ficou. Os ids são preservados, então referências entre itens migrados continuam válidas.
+4. A conta no servidor nunca é apagada por "parar de sincronizar".
+
+Os testes estão em `crates/vessel-client/tests/local_mode.rs`.

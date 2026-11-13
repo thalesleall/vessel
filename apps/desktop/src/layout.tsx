@@ -6,6 +6,7 @@ import {
 } from "./store";
 import { HostKeyPrompt, TerminalView, connectHost, openProfile } from "./terminal";
 import { Icon, ShellIcon, colorFor, initials } from "./ui";
+import { Brand } from "./auth";
 import { HostsView } from "./views/hosts";
 import { ProfilesView } from "./views/profiles";
 import { KeychainView } from "./views/keychain";
@@ -32,13 +33,7 @@ function Sidebar() {
   const count = (id: Section) => (id === "hosts" ? hosts().length : undefined);
   return (
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-logo"><Icon name="terminal" size={17} /></div>
-        <div>
-          <div class="brand-name">Vessel</div>
-          <div class="brand-sub">terminal + sync criptografado</div>
-        </div>
-      </div>
+      <Brand sub={status()?.local ? "Só neste computador" : "Sincronizado"} />
       <For each={nav}>
         {(n) => (
           <>
@@ -53,16 +48,23 @@ function Sidebar() {
         )}
       </For>
       <div class="sidebar-footer">
-        <div class="sync-line" title={syncError() ?? ""}>
-          <span class="dot" classList={{ busy: syncing(), err: !!syncError() }} />
-          <span>{syncing() ? "Sincronizando…" : syncError() ? "Falha ao sincronizar" : lastSync() ? "Sincronizado" : "Conectado"}</span>
-        </div>
+        <Show when={!status()?.local} fallback={
+          <button class="sync-line link-like" onClick={() => { setSection("settings"); setActiveTab("home"); }} title="Conectar a um servidor">
+            <span class="dot off" />
+            <span>Sem sincronização</span>
+          </button>
+        }>
+          <div class="sync-line" title={syncError() ?? ""}>
+            <span class="dot" classList={{ busy: syncing(), err: !!syncError() }} />
+            <span>{syncing() ? "Sincronizando…" : syncError() ? "Falha ao sincronizar" : lastSync() ? "Sincronizado" : "Conectado"}</span>
+          </div>
+        </Show>
         <div class="account-chip">
           <div class="avatar" style={{ width: "30px", height: "30px", "border-radius": "8px", display: "grid", "place-items": "center",
             background: colorFor(status()?.email ?? ""), "font-size": "12px", "font-weight": 650 }}>{initials(status()?.email ?? "?")}</div>
           <div class="meta">
             <div class="email">{status()?.email}</div>
-            <div class="sync-line">{status()?.server_url?.replace(/^https?:\/\//, "")}</div>
+            <div class="sync-line" style={{ padding: 0 }}>{status()?.local ? "Este computador" : status()?.server_url?.replace(/^https?:\/\//, "")}</div>
           </div>
           <button class="icon-btn" title="Bloquear (Ctrl+L)" onClick={lock}><Icon name="lock" size={16} /></button>
         </div>

@@ -7,16 +7,29 @@ import { SearchAddon } from "@xterm/addon-search";
 import { api, errorCode, errorMessage, type SessionInfo, type Shell } from "./api";
 import { activeTab, refreshSessions, sessions, setActiveTab, settings, toast } from "./store";
 import { Button, Icon, Modal } from "./ui";
+import { resolvedTheme } from "./theme";
 
-export const theme: ITheme = {
-  background: "#0b0e14",
-  foreground: "#d8deec",
-  cursor: "#7aa7ff",
-  cursorAccent: "#0b0e14",
-  selectionBackground: "rgba(122, 167, 255, 0.32)",
-  black: "#1a1f2b", red: "#f7768e", green: "#7ee0a1", yellow: "#e0c27a", blue: "#7aa7ff", magenta: "#bb9af7", cyan: "#7dcfff", white: "#c0caf5",
-  brightBlack: "#4b5468", brightRed: "#ff8fa3", brightGreen: "#9ef0b8", brightYellow: "#f2d895", brightBlue: "#9cbcff", brightMagenta: "#cdb4ff", brightCyan: "#a3e0ff", brightWhite: "#e6ebff",
+const darkTheme: ITheme = {
+  background: "#030407",
+  foreground: "#e3e8f4",
+  cursor: "#d4ff24",
+  cursorAccent: "#030407",
+  selectionBackground: "rgba(21, 88, 201, 0.55)",
+  black: "#141a26", red: "#ff6b5e", green: "#b8e62a", yellow: "#f5c84c", blue: "#4f8ef7", magenta: "#c08cff", cyan: "#4cc9f0", white: "#c9d1e3",
+  brightBlack: "#4a5470", brightRed: "#ff8f84", brightGreen: "#d4ff24", brightYellow: "#ffdd7a", brightBlue: "#7fa9f5", brightMagenta: "#d6b0ff", brightCyan: "#86ddf7", brightWhite: "#f4f6fb",
 };
+
+const lightTheme: ITheme = {
+  background: "#fbf9fc",
+  foreground: "#400849",
+  cursor: "#ff5a0a",
+  cursorAccent: "#fbf9fc",
+  selectionBackground: "rgba(55, 176, 222, 0.35)",
+  black: "#400849", red: "#c2183a", green: "#1f7a3e", yellow: "#9a6200", blue: "#1558c9", magenta: "#8a1f9a", cyan: "#0f7fa8", white: "#8d7a92",
+  brightBlack: "#6d5673", brightRed: "#e0334f", brightGreen: "#2a9a52", brightYellow: "#c27c00", brightBlue: "#2f74e6", brightMagenta: "#a43bb5", brightCyan: "#2a9ccc", brightWhite: "#c9bccd",
+};
+
+export const terminalTheme = () => (resolvedTheme() === "light" ? lightTheme : darkTheme);
 
 // ---------------------------------------------------------------------------------------------
 // Opening sessions
@@ -135,10 +148,15 @@ export function TerminalView(props: { id: string }) {
     }
   };
 
+  createEffect(() => {
+    const t = terminalTheme();
+    if (term) term.options.theme = t;
+  });
+
   onMount(() => {
     const s = settings();
     term = new Terminal({
-      theme,
+      theme: terminalTheme(),
       fontFamily: s?.font_family || "Cascadia Mono, Consolas, monospace",
       fontSize: s?.font_size || 14,
       lineHeight: s?.line_height || 1.2,

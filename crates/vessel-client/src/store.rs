@@ -98,6 +98,22 @@ impl Store {
         Ok(())
     }
 
+    pub fn remove(&self, key: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM kv WHERE key = ?1", params![key])?;
+        Ok(())
+    }
+
+    /// Writes a consistent copy of the whole database (still encrypted) to `path`.
+    pub fn backup(&self, path: &Path) -> Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).ok();
+        }
+        let target = path.to_string_lossy().to_string();
+        self.conn.execute("VACUUM INTO ?1", params![target])?;
+        Ok(())
+    }
+
     /// Forgets everything: used on logout and device revocation.
     pub fn wipe(&self) -> Result<()> {
         self.conn.execute_batch("DELETE FROM kv; DELETE FROM vaults; DELETE FROM records; DELETE FROM pending; DELETE FROM conflicts;")?;

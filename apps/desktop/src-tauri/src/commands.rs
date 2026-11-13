@@ -108,6 +108,128 @@ pub async fn recover(
     Ok(status)
 }
 
+// -- local mode and migrations ------------------------------------------------------------------
+
+/// What a migration did, plus where the safety backup was written.
+#[derive(Serialize)]
+pub struct MigrationOutcome {
+    #[serde(flatten)]
+    pub report: vessel_client::MigrationReport,
+    pub backup_path: String,
+    pub status: Status,
+}
+
+/// Encrypted copy of the local database, taken before every migration.
+fn backup(state: &AppState, vessel: &vessel_client::Vessel, reason: &str) -> CmdResult<String> {
+    let stamp = backup_stamp();
+    let path = state
+        .data_dir
+        .join("backups")
+        .join(format!("vessel-{stamp}-{reason}.db"));
+    vessel.backup(&path)?;
+    Ok(path.display().to_string())
+}
+
+fn backup_stamp() -> String {
+    // Seconds since the epoch: unique enough and sortable, without a date library.
+    crate::state::now().to_string()
+}
+
+#[tauri::command]
+pub async fn create_local(state: S<'_>, name: String, password: String) -> CmdResult<String> {
+    let recovery = state.vessel.lock().await.create_local(&name, &password)?;
+    if let Err(e) = ops::ensure_defaults(&state).await {
+        tracing::warn!("could not create default profiles: {e}");
+    }
+    mcp::apply(&state).await;
+    Ok(recovery)
+}
+
+#[tauri::command]
+pub async fn recover_local(
+    state: S<'_>,
+    recovery_key: String,
+    new_password: String,
+) -> CmdResult<Status> {
+    let mut vessel = state.vessel.lock().await;
+    vessel.recover_local(&recovery_key, &new_password)?;
+    let status = vessel.status();
+    drop(vessel);
+    mcp::apply(&state).await;
+    Ok(status)
+}
+
+#[tauri::command]
+pub async fn connect_new_account(
+    state: S<'_>,
+    url: String,
+    email: String,
+    password: String,
+    invite: Option<String>,
+) -> CmdResult<MigrationOutcome> {
+    let mut vessel = state.vessel.lock().await;
+    let backup_path = backup(&state, &vessel, "antes-de-conectar")?;
+    let report = vessel
+        .connect_new_account(
+            &url,
+            &email,
+            &password,
+            &device_name(),
+            invite.filter(|i| !i.trim().is_empty()),
+        )
+        .await?;
+    let status = vessel.status();
+    drop(vessel);
+    after_auth(&state, &url, &email).await;
+    state.changed();
+    Ok(MigrationOutcome {
+        report,
+        backup_path,
+        status,
+    })
+}
+
+#[tauri::command]
+pub async fn connect_existing_account(
+    state: S<'_>,
+    url: String,
+    email: String,
+    password: String,
+) -> CmdResult<MigrationOutcome> {
+    let mut vessel = state.vessel.lock().await;
+    let backup_path = backup(&state, &vessel, "antes-de-conectar")?;
+    let report = vessel
+        .connect_existing_account(&url, &email, &password, &device_name())
+        .await?;
+    let status = vessel.status();
+    drop(vessel);
+    after_auth(&state, &url, &email).await;
+    state.changed();
+    Ok(MigrationOutcome {
+        report,
+        backup_path,
+        status,
+    })
+}
+
+#[tauri::command]
+pub async fn disconnect_to_local(state: S<'_>) -> CmdResult<MigrationOutcome> {
+    state.terms.close_all();
+    state.forwards.stop_all();
+    let mut vessel = state.vessel.lock().await;
+    let backup_path = backup(&state, &vessel, "antes-de-desconectar")?;
+    let report = vessel.disconnect_to_local().await?;
+    let status = vessel.status();
+    drop(vessel);
+    mcp::apply(&state).await;
+    state.changed();
+    Ok(MigrationOutcome {
+        report,
+        backup_path,
+        status,
+    })
+}
+
 #[tauri::command]
 pub async fn unlock(state: S<'_>, password: String) -> CmdResult<Status> {
     let status = {

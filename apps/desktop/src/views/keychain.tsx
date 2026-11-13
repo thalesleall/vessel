@@ -38,7 +38,7 @@ export function KeychainView() {
                 <div class="row" onDblClick={() => setEditIdentity(i)}>
                   <Icon name="user" />
                   <div class="meta"><div class="name">{i.entity.data.label || i.entity.data.username}</div>
-                    <div class="sub">{i.entity.data.username}{i.entity.data.password ? " · senha" : ""}{i.entity.data.ssh_key_id ? " · chave" : ""}</div></div>
+                    <div class="sub">{i.entity.data.username}{i.entity.data.password ? ", senha" : ""}{i.entity.data.ssh_key_id ? ", chave" : ""}</div></div>
                   <Button small icon="edit" onClick={() => setEditIdentity(i)}>Editar</Button>
                 </div>
               )}
@@ -75,7 +75,7 @@ export function KeychainView() {
               {(k) => (
                 <div class="row">
                   <Icon name="shield" />
-                  <div class="meta"><div class="name">{k.entity.data.host}</div><div class="sub mono">{k.entity.data.key_type} · {k.entity.data.fingerprint}</div></div>
+                  <div class="meta"><div class="name">{k.entity.data.host}</div><div class="sub mono">{k.entity.data.key_type}, {k.entity.data.fingerprint}</div></div>
                   <Button small variant="danger" icon="trash" onClick={() => removeItem(k, "o host conhecido")}>Esquecer</Button>
                 </div>
               )}

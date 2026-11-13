@@ -2,13 +2,14 @@
 
 Terminal e cliente SSH para desktop, com **sincronização criptografada de ponta a ponta por um servidor self-hosted** e **integração nativa com agentes de IA via MCP**.
 
+- **Funciona sem servidor:** no modo "Só neste computador" tudo fica local e cifrado. Dá para conectar um servidor depois, ou voltar, sem perder dados.
 - **Terminais locais:** PowerShell, CMD, distribuições WSL e Git Bash rodam na sua máquina (ConPTY).
 - **O resto sincroniza** entre todos os seus computadores: hosts, grupos, identidades, chaves SSH, snippets, perfis de terminal, redirecionamentos de porta, hosts conhecidos e configurações. Os dados são cifrados no seu computador antes de sair dele.
 - **Agente de sync self-hosted** em um container Docker. Ele guarda só blobs cifrados e não consegue ler nada: nem endereços, nem nomes, nem portas.
 - **Times:** cofres compartilhados com papéis (leitor, editor, admin e dono), convites, aprovação com conferência da impressão digital e troca de chave ao remover alguém.
 - **Agentes de IA (MCP):** Claude Code, Claude Desktop, Cursor e outros podem gerenciar hosts, snippets, perfis e terminais. Credenciais ficam sempre fora do alcance deles.
 
-O desenho completo, com modelo de ameaças, protocolo e criptografia, está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+O desenho completo, com modelo de ameaças, protocolo e criptografia, está em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). As decisões visuais (paleta, tipografia, temas claro e escuro) estão em [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Estrutura
 
@@ -56,7 +57,7 @@ npx tauri dev       # desenvolvimento
 npx tauri build     # instalador (NSIS) em target/release/bundle
 ```
 
-Para ver a interface no navegador com um backend falso, sem o Tauri, rode `npm run dev` e abra `http://localhost:1420/?mock`.
+Para ver a interface no navegador com um backend falso, sem o Tauri, rode `npm run dev` e abra `http://localhost:1420/?mock` (conta em servidor), `?mock=local` (modo local) ou `?mock=welcome` (primeira execução).
 
 Atalhos: `Ctrl+K` abre a paleta de comandos, `Ctrl+T` abre um novo terminal e `Ctrl+L` bloqueia. No terminal: `Ctrl+Shift+C` e `Ctrl+Shift+V`, e o botão direito copia ou cola.
 

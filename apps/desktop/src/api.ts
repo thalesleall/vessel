@@ -17,6 +17,17 @@ export interface Status {
   device_id: Uuid | null;
   fingerprint: string | null;
   is_server_admin: boolean;
+  /** Local-only mode: no sync server. */
+  local: boolean;
+}
+
+export interface MigrationOutcome {
+  imported: number;
+  skipped_duplicates: number;
+  /** A new recovery key, shown once, when the previous one stopped working. */
+  recovery_key: string | null;
+  backup_path: string;
+  status: Status;
 }
 
 export interface LocalSettings {
@@ -191,6 +202,13 @@ export const api = {
   recover: (url: string, email: string, recoveryKey: string, newPassword: string) =>
     invoke<Status>("recover", { url, email, recoveryKey, newPassword }),
   unlock: (password: string) => invoke<Status>("unlock", { password }),
+  createLocal: (name: string, password: string) => invoke<string>("create_local", { name, password }),
+  recoverLocal: (recoveryKey: string, newPassword: string) => invoke<Status>("recover_local", { recoveryKey, newPassword }),
+  connectNewAccount: (url: string, email: string, password: string, invite?: string) =>
+    invoke<MigrationOutcome>("connect_new_account", { url, email, password, invite: invite || null }),
+  connectExistingAccount: (url: string, email: string, password: string) =>
+    invoke<MigrationOutcome>("connect_existing_account", { url, email, password }),
+  disconnectToLocal: () => invoke<MigrationOutcome>("disconnect_to_local"),
   lock: () => invoke<Status>("lock"),
   logout: () => invoke<Status>("logout"),
   changePassword: (current: string, next: string) => invoke<void>("change_password", { current, new: next }),
@@ -275,7 +293,7 @@ export function shellLabel(shell: Shell): string {
     case "pwsh": return "PowerShell";
     case "windows_powershell": return "Windows PowerShell";
     case "cmd": return "Prompt de Comando";
-    case "wsl": return `WSL · ${shell.distro}`;
+    case "wsl": return `WSL (${shell.distro})`;
     case "git_bash": return "Git Bash";
     case "custom": return shell.program;
   }

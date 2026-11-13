@@ -1,16 +1,23 @@
 import { For, Show, createResource, createSignal } from "solid-js";
 import { api, type Settings } from "../api";
-import { attempt, copy, refreshData, setStatus, settings, settingsItem, status } from "../store";
+import { attempt, copy, refreshData, settings, settingsItem, status } from "../store";
 import { Badge, Button, Field, Icon, confirmAction, timeAgo } from "../ui";
 import { ItemSelect } from "./common";
+import { Account } from "./account";
+import { ThemeSwitch } from "../auth";
 
 export function SettingsView() {
   return (
     <>
       <div class="page-head"><h1>Configurações</h1></div>
+      <div class="panel">
+        <h3>Aparência</h3>
+        <p>Vale só para este computador.</p>
+        <ThemeSwitch />
+      </div>
       <Appearance />
       <Account />
-      <Devices />
+      <Show when={!status()?.local}><Devices /></Show>
       <Conflicts />
       <Show when={status()?.is_server_admin}><ServerAdmin /></Show>
     </>
@@ -30,7 +37,7 @@ function Appearance() {
       {(s) => (
         <div class="panel">
           <h3>Terminal</h3>
-          <p>Sincronizado entre seus computadores. Novos terminais usam estas opções.</p>
+          <p>Novos terminais usam estas opções. Com um servidor conectado, elas valem em todos os seus computadores.</p>
           <div class="form">
             <div class="form-row-3">
               <Field label="Fonte"><input value={s().font_family} onChange={(e) => update({ font_family: e.currentTarget.value })} /></Field>
@@ -58,45 +65,6 @@ function Appearance() {
   );
 }
 
-function Account() {
-  const [current, setCurrent] = createSignal("");
-  const [next, setNext] = createSignal("");
-  const [next2, setNext2] = createSignal("");
-  const change = async () => {
-    if (next() !== next2()) return attempt(() => Promise.reject({ message: "As senhas novas não coincidem." }));
-    if (next().length < 10) return attempt(() => Promise.reject({ message: "Use pelo menos 10 caracteres." }));
-    const ok = await attempt(() => api.changePassword(current(), next()), "Senha mestre alterada. Outros dispositivos precisarão entrar de novo.");
-    if (ok !== undefined) { setCurrent(""); setNext(""); setNext2(""); }
-  };
-  const logout = async () => {
-    if (!(await confirmAction("Sair desta conta neste computador? Os dados locais serão apagados (continuam no servidor)."))) return;
-    setStatus(await api.logout());
-  };
-  return (
-    <div class="panel">
-      <h3>Conta</h3>
-      <dl class="kv" style={{ margin: "8px 0 16px" }}>
-        <dt>E-mail</dt><dd>{status()?.email}</dd>
-        <dt>Servidor</dt><dd class="mono">{status()?.server_url}</dd>
-        <dt>Impressão digital</dt><dd><span class="fingerprint">{status()?.fingerprint}</span>
-          <button class="icon-btn" style={{ display: "inline-grid", "vertical-align": "middle" }} onClick={() => copy(status()?.fingerprint ?? "")}><Icon name="copy" size={14} /></button></dd>
-      </dl>
-      <div class="section-title" style={{ "margin-top": "0" }}>Trocar senha mestre</div>
-      <div class="form-row-3" style={{ "align-items": "end" }}>
-        <Field label="Senha atual"><input type="password" value={current()} onInput={(e) => setCurrent(e.currentTarget.value)} /></Field>
-        <Field label="Nova senha"><input type="password" value={next()} onInput={(e) => setNext(e.currentTarget.value)} /></Field>
-        <Field label="Confirmar"><input type="password" value={next2()} onInput={(e) => setNext2(e.currentTarget.value)} /></Field>
-      </div>
-      <div style={{ display: "flex", gap: "8px", "margin-top": "12px" }}>
-        <Button onClick={change} disabled={!current() || !next()}>Trocar senha</Button>
-        <span style={{ flex: 1 }} />
-        <Button icon="lock" onClick={async () => setStatus(await api.lock())}>Bloquear</Button>
-        <Button variant="danger" icon="logout" onClick={logout}>Sair</Button>
-      </div>
-    </div>
-  );
-}
-
 function Devices() {
   const [devices, { refetch }] = createResource(() => api.devices().catch(() => []));
   const revoke = async (id: string, name: string) => {
@@ -106,7 +74,7 @@ function Devices() {
   };
   return (
     <>
-      <div class="section-title"><Icon name="monitor" size={14} />Dispositivos</div>
+      <div class="section-title">Computadores conectados</div>
       <div class="list">
         <For each={devices() ?? []}>
           {(d) => (
@@ -127,14 +95,14 @@ function Conflicts() {
   const [conflicts, { refetch }] = createResource(() => api.conflicts().catch(() => []));
   return (
     <Show when={(conflicts() ?? []).length}>
-      <div class="section-title"><Icon name="alert" size={14} />Conflitos de sincronização</div>
+      <div class="section-title">Conflitos de sincronização</div>
       <div class="list">
         <For each={conflicts() ?? []}>
           {(c) => (
             <div class="row">
               <Icon name="alert" />
               <div class="meta"><div class="name">{c.label}</div>
-                <div class="sub">{c.conflicts.map((f) => `${f.field}: mantido ${JSON.stringify(f.local)}, descartado ${JSON.stringify(f.remote)}`).join(" · ")}</div></div>
+                <div class="sub">{c.conflicts.map((f) => `${f.field}: mantido ${JSON.stringify(f.local)}, descartado ${JSON.stringify(f.remote)}`).join(", ")}</div></div>
               <Button small onClick={async () => { await api.dismissConflict(c.id); refetch(); }}>Dispensar</Button>
             </div>
           )}
@@ -149,7 +117,7 @@ function ServerAdmin() {
   const [link, setLink] = createSignal<string | null>(null);
   return (
     <>
-      <div class="section-title"><Icon name="shield" size={14} />Administração do servidor</div>
+      <div class="section-title">Administração do servidor</div>
       <div class="panel">
         <h3>Convidar para o servidor</h3>
         <p>Gera um convite de cadastro (para servidores com cadastro só por convite).</p>

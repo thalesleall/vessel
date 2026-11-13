@@ -29,7 +29,7 @@ export function ProfilesView() {
                 <ShellIcon shell={p.entity.data.shell} color={p.entity.data.color} size={38} />
                 <div class="meta">
                   <div class="name">{p.entity.data.label}</div>
-                  <div class="sub">{shellLabel(p.entity.data.shell)}{p.entity.data.cwd ? ` · ${p.entity.data.cwd}` : ""}</div>
+                  <div class="sub">{shellLabel(p.entity.data.shell)}{p.entity.data.cwd ? `, ${p.entity.data.cwd}` : ""}</div>
                 </div>
                 <div class="actions" onClick={(e) => e.stopPropagation()}>
                   <button class="icon-btn" title="Editar" onClick={() => setEditing(p)}><Icon name="edit" size={15} /></button>

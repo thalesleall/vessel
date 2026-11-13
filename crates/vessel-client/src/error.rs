@@ -20,6 +20,9 @@ pub enum ClientError {
     Json(#[from] serde_json::Error),
     #[error("not signed in")]
     NotSignedIn,
+    /// The feature needs a sync server and this device is in local-only mode.
+    #[error("this needs a sync server; connect one in Settings to use it")]
+    LocalMode,
     #[error("the vault is locked")]
     Locked,
     #[error("wrong password")]

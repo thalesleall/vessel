@@ -97,6 +97,18 @@ pub fn rewrap_for_master(
     )
 }
 
+/// Issues a new recovery key for an unlocked account. The previous recovery key stops working
+/// once the returned wrapping replaces `wrapped_account_key_recovery`. No data is re-encrypted.
+pub fn new_recovery_key(account: &UnlockedAccount) -> Result<(Vec<u8>, RecoveryKey)> {
+    let recovery = RecoveryKey(SymmetricKey::generate()?);
+    let wrapped = wrap_key(
+        &recovery.0,
+        WrapPurpose::AccountKeyByRecovery,
+        &account.account_key,
+    )?;
+    Ok((wrapped, recovery))
+}
+
 fn open_private_keys(
     material: &AccountKeyMaterial,
     account_key: SymmetricKey,

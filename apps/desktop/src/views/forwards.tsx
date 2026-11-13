@@ -50,7 +50,7 @@ export function ForwardsView() {
                   <Icon name="route" />
                   <div class="meta">
                     <div class="name">{r.entity.data.label || describe(r.entity.data)}</div>
-                    <div class="sub">{describe(r.entity.data)} · via {host() ? labelOf(host()!) : "?"}</div>
+                    <div class="sub">{describe(r.entity.data)}, via {host() ? labelOf(host()!) : "?"}</div>
                   </div>
                   <Show when={st()?.running}><Badge tone="green">ativo</Badge></Show>
                   <Show when={st()?.error}><Badge tone="red">{st()!.error}</Badge></Show>

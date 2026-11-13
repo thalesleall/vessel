@@ -35,6 +35,10 @@ const paths: Record<string, string> = {
   zap: "M13 2L4 14h7l-1 8 9-12h-7z",
   logout: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10",
   file: "M6 3h8l4 4v14H6zM14 3v4h4",
+  "chevron-left": "M15 6l-6 6 6 6",
+  laptop: "M5 5h14v10H5zM2 19h20",
+  cloud: "M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z",
+  unlink: "M9 15l-1.5 1.5a3.5 3.5 0 0 1-5-5L5 9M15 9l1.5-1.5a3.5 3.5 0 0 1 5 5L19 15M4 4l16 16",
 };
 
 export function Icon(props: { name: string; size?: number; class?: string }) {
@@ -74,7 +78,7 @@ function badgeFor(shell: ShellLike, ssh: boolean): { bg: string; glyph?: string;
     case "wsl": {
       const d = shell.distro ?? "";
       const bg = distroColors.find(([re]) => re.test(d))?.[1] ?? "#3d8c40";
-      return { bg, glyph: "$_", title: `WSL · ${d}` };
+      return { bg, glyph: "$_", title: `WSL (${d})` };
     }
     default: return { bg: "#6b4fd8", icon: "terminal", title: "Terminal" };
   }
@@ -174,10 +178,12 @@ export function Badge(props: ParentProps<{ tone?: "blue" | "green" | "amber" | "
   return <span class={`badge badge-${props.tone ?? "gray"}`}>{props.children}</span>;
 }
 
-/** Confirm dialog returning a promise. */
-const [confirmState, setConfirmState] = createSignal<{ text: string; danger: boolean; resolve: (v: boolean) => void } | null>(null);
-export function confirmAction(text: string, danger = true): Promise<boolean> {
-  return new Promise((resolve) => setConfirmState({ text, danger, resolve }));
+/** Confirm dialog returning a promise. Pass a string, or a title, message and button label. */
+type ConfirmOptions = { title?: string; message: string; confirm?: string; danger?: boolean };
+const [confirmState, setConfirmState] = createSignal<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(null);
+export function confirmAction(what: string | ConfirmOptions, danger = true): Promise<boolean> {
+  const opts: ConfirmOptions = typeof what === "string" ? { message: what, danger } : what;
+  return new Promise((resolve) => setConfirmState({ ...opts, resolve }));
 }
 export function ConfirmHost() {
   const close = (v: boolean) => {
@@ -187,12 +193,12 @@ export function ConfirmHost() {
   return (
     <Show when={confirmState()}>
       {(c) => (
-        <Modal title="Confirmar" onClose={() => close(false)}
+        <Modal title={c().title ?? "Confirmar"} onClose={() => close(false)}
           footer={<>
             <Button onClick={() => close(false)}>Cancelar</Button>
-            <Button variant={c().danger ? "danger" : "primary"} onClick={() => close(true)}>Confirmar</Button>
+            <Button variant={c().danger === false ? "primary" : "danger"} onClick={() => close(true)}>{c().confirm ?? "Confirmar"}</Button>
           </>}>
-          <p class="confirm-text">{c().text}</p>
+          <p class="confirm-text">{c().message}</p>
         </Modal>
       )}
     </Show>
@@ -205,7 +211,7 @@ export function initials(text: string): string {
 }
 
 export function colorFor(text: string): string {
-  const palette = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#06b6d4", "#ef4444", "#84cc16"];
+  const palette = ["#1558c9", "#0f7fa8", "#6a2a8c", "#c2501a", "#2a8a5a", "#37b0de", "#8a1f9a", "#a8791a"];
   let h = 0;
   for (const c of text) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return palette[h % palette.length];
