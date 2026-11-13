@@ -7,3 +7,4 @@ deploy/.env
 *.db-wal
 *.db-shm
 deploy/dev/.lab/
+apps/desktop/src-tauri/binaries/
