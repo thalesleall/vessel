@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="t d">
+  <title id="t">Vessel</title>
+  <desc id="d">Terminal e SSH com sincronização criptografada de ponta a ponta.</desc>
+  <rect width="1280" height="320" rx="24" fill="#030407"/>
+  <g transform="translate(96 104)">
+    <rect width="112" height="112" rx="26" fill="#1558C9"/>
+    <rect x="44" y="32" width="24" height="48" rx="4" fill="#D4FF24"/>
+  </g>
+  <text x="240" y="164" fill="#EDF0F7" font-family="IBM Plex Sans, Segoe UI, Helvetica, Arial, sans-serif" font-size="76" font-weight="600" letter-spacing="-1">Vessel</text>
+  <text x="242" y="206" fill="#A3ACC2" font-family="IBM Plex Sans, Segoe UI, Helvetica, Arial, sans-serif" font-size="24">Terminal e SSH com sincronização criptografada</text>
+  <text x="242" y="238" fill="#A3ACC2" font-family="IBM Plex Sans, Segoe UI, Helvetica, Arial, sans-serif" font-size="24">de ponta a ponta. Você escolhe onde seus dados ficam.</text>
+  <g fill="none" stroke="#3D7DF0" stroke-width="3" stroke-linejoin="round">
+    <rect x="1030" y="70" width="64" height="64" rx="10" fill="#0F1A33"/>
+    <path d="M1046 92H1078M1046 106H1078"/>
+    <rect x="940" y="200" width="72" height="48" rx="8" fill="#0F1A33"/>
+    <rect x="1026" y="214" width="72" height="48" rx="8" fill="#0F1A33"/>
+    <rect x="1112" y="200" width="72" height="48" rx="8" fill="#0F1A33"/>
+  </g>
+  <g stroke="#687392" stroke-width="2" stroke-dasharray="5 6" fill="none">
+    <path d="M1048 136L976 198M1062 136V212M1076 136L1148 198"/>
+  </g>
+  <g fill="#D4FF24">
+    <circle cx="1062" cy="120" r="5"/>
+    <rect x="954" y="214" width="8" height="18" rx="2"/>
+    <rect x="1040" y="228" width="8" height="18" rx="2"/>
+    <rect x="1126" y="214" width="8" height="18" rx="2"/>
+    <circle cx="1012" cy="167" r="4"/>
+    <circle cx="1112" cy="167" r="4"/>
+  </g>
+</svg>

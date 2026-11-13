@@ -4,7 +4,7 @@ members = ["apps/agent", "apps/desktop/src-tauri", "apps/devtool", "apps/mcp-bri
 
 [workspace.package]
 edition = "2024"
-license = "AGPL-3.0-or-later"
+license = "MIT OR Apache-2.0"
 rust-version = "1.90"
 
 # Argon2id, X25519 and friends are unusably slow unoptimized; optimize dependencies in dev builds.
