@@ -139,7 +139,7 @@ function VaultDetail(props: { vault: VaultView; onClosed: () => void }) {
                           <option value="viewer">Leitor</option><option value="editor">Editor</option>
                           <Show when={props.vault.role === "owner"}><option value="admin">Admin</option></Show>
                         </select>
-                        <Button small variant="danger" icon="trash" onClick={() => remove(mem.user_id, mem.email)} />
+                        <Button small variant="danger" icon="trash" title={`Remover ${mem.email}`} onClick={() => remove(mem.user_id, mem.email)} />
                       </Show>
                     </div>
                   )}

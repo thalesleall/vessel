@@ -250,7 +250,8 @@ export function TerminalView(props: { id: string }) {
     if (visible()) {
       requestAnimationFrame(() => {
         sendResize();
-        term?.focus();
+        // Keyboard users moving through the tabs keep focus on the tab list.
+        if (!document.activeElement?.matches("[role=tab]:focus-visible")) term?.focus();
       });
     }
   });

@@ -4,7 +4,9 @@
 const reduceQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 export const reducedMotion = () => reduceQuery.matches;
 
-type ViewTransitionDocument = Document & { startViewTransition?: (update: () => void) => unknown };
+interface ViewTransitionHandle { ready: Promise<void>; finished: Promise<void>; updateCallbackDone: Promise<void> }
+type ViewTransitionDocument = Document & { startViewTransition?: (update: () => void) => ViewTransitionHandle };
+const ignore = () => {};
 
 /** Applies a DOM-changing update as a View Transition (cross-fade of the changed areas). */
 export function transition(update: () => void) {
@@ -14,7 +16,11 @@ export function transition(update: () => void) {
     return;
   }
   try {
-    doc.startViewTransition(update);
+    // A quick second action skips the running transition (AbortError); the update still runs.
+    const vt = doc.startViewTransition(update);
+    vt.ready.catch(ignore);
+    vt.finished.catch(ignore);
+    vt.updateCallbackDone.catch(ignore);
   } catch {
     update();
   }

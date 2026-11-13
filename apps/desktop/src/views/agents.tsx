@@ -89,7 +89,7 @@ export function AgentsView() {
                 <Field label="Token de acesso">
                   <div style={{ display: "flex", gap: "8px" }}>
                     <input class="mono" type={showToken() ? "text" : "password"} value={i().token} readOnly />
-                    <Button icon="copy" onClick={() => copy(i().token, "Token copiado")} />
+                    <Button icon="copy" title="Copiar token" onClick={() => copy(i().token, "Token copiado")} />
                     <Button onClick={() => setShowToken(!showToken())}>{showToken() ? "Ocultar" : "Mostrar"}</Button>
                     <Button icon="sync" onClick={async () => { const r = await attempt(() => api.mcpRegenerateToken(), "Novo token gerado"); if (r) setInfo(r); }}>Gerar novo</Button>
                   </div>

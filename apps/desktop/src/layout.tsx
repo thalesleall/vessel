@@ -89,9 +89,27 @@ function TabBar() {
     if (p) openProfile(p.id);
     else setSection("terminals");
   };
+  // WAI-ARIA tabs: arrows, Home and End move between tabs and activate them; only the active
+  // tab is in the Tab order.
+  const onTabsKey = (e: KeyboardEvent) => {
+    const ids = ["home", ...sessions().map((x) => x.id)];
+    const at = ids.indexOf(activeTab());
+    const next = e.key === "ArrowRight" ? (at + 1) % ids.length
+      : e.key === "ArrowLeft" ? (at - 1 + ids.length) % ids.length
+      : e.key === "Home" ? 0
+      : e.key === "End" ? ids.length - 1
+      : -1;
+    if (next < 0 || (e.target as HTMLElement).closest(".close")) return;
+    e.preventDefault();
+    const list = e.currentTarget as HTMLElement;
+    setActiveTab(ids[next]);
+    queueMicrotask(() => list.querySelector<HTMLElement>(`[data-tab="${ids[next]}"]`)?.focus());
+  };
   return (
-    <div class="tabbar" role="tablist" aria-label="Abas">
-      <button class="tab tab-home" role="tab" aria-selected={activeTab() === "home"} classList={{ active: activeTab() === "home" }}
+    <div class="tabbar">
+     <div class="tabbar-tabs" role="tablist" aria-label="Abas" onKeyDown={onTabsKey}>
+      <button class="tab tab-home" role="tab" data-tab="home" aria-selected={activeTab() === "home"} classList={{ active: activeTab() === "home" }}
+        tabIndex={activeTab() === "home" ? 0 : -1}
         onClick={() => setActiveTab("home")} title="Início" aria-label="Início">
         <Icon name="vault" size={16} />
       </button>
@@ -102,8 +120,8 @@ function TabBar() {
           return (
             <Show when={s()}>
               {(s) => (
-                <div class="tab" classList={{ active: activeTab() === id }} onClick={() => setActiveTab(id)} role="tab"
-                  aria-selected={activeTab() === id} tabIndex={0} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveTab(id)}>
+                <div class="tab" classList={{ active: activeTab() === id }} onClick={() => setActiveTab(id)} role="tab" data-tab={id}
+                  aria-selected={activeTab() === id} tabIndex={activeTab() === id ? 0 : -1} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveTab(id)}>
                   <span class="state" classList={{ dead: !s().alive }} />
                   <ShellIcon ssh={s().kind.kind === "ssh"} shell={s().kind.kind === "local" ? (s().kind as { shell_kind?: Shell }).shell_kind : null} size={16} />
                   <span class="title" title={s().kind.kind === "ssh" ? (s().kind as { address: string }).address : (s().kind as { shell: string }).shell}>{s().title}</span>
@@ -115,6 +133,7 @@ function TabBar() {
           );
         }}
       </For>
+     </div>
       <button class="tab tab-new" onClick={quickOpen} title="Novo terminal (Ctrl+T)" aria-label="Novo terminal"><Icon name="plus" size={16} /></button>
     </div>
   );
