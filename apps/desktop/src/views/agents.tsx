@@ -106,7 +106,7 @@ export function AgentsView() {
                 <button classList={{ on: client() === "stdio" }} onClick={() => setClient("stdio")}>Outros (stdio)</button>
               </div>
               <p>{client() === "claude-code" ? "Rode no terminal:" : client() === "cursor" ? "Adicione ao mcp.json:" : "Adicione ao arquivo de configuração MCP do cliente (usa a ponte vessel-mcp):"}</p>
-              <div class="code-block">{snippet()}<button class="icon-btn" title="Copiar com o token" onClick={() => copy(realSnippet(), "Configuração copiada")}><Icon name="copy" size={15} /></button></div>
+              <div class="code-block">{snippet()}<button class="icon-btn" aria-label="Copiar com o token" title="Copiar com o token" onClick={() => copy(realSnippet(), "Configuração copiada")}><Icon name="copy" size={15} /></button></div>
             </div>
 
             <div class="section-title"><Icon name="bot" size={14} />Atividade dos agentes</div>

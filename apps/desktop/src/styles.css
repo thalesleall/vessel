@@ -406,3 +406,124 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius
 }
 .link-like { background: none; border: 0; cursor: pointer; text-align: left; font: inherit; }
 .link-like:hover span:last-child { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ================================================================== motion
+   Motion answers an action: switching a section, tab or theme, opening or closing a layer,
+   moving the active marker. Durations stay under 250 ms; nothing loops except busy states. */
+:root {
+  --ease-out: cubic-bezier(.2, 0, 0, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+}
+
+/* Section, tab and theme changes (View Transitions). Only the content area slides; the rest of
+   the window cross-fades quickly. */
+.content { view-transition-name: content; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 140ms; animation-timing-function: var(--ease-out); }
+::view-transition-old(content) { animation: vt-out 110ms var(--ease-in) both; }
+::view-transition-new(content) { animation: vt-in 210ms var(--ease-out) both; }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* Colour changes on interactive surfaces ease instead of snapping. */
+.nav-item, .tab, .row, .card, .chip, .palette-item, .icon-btn, .link-btn, .segmented button, .auth-tabs button, .choice, .btn {
+  transition: background-color .16s var(--ease-out), border-color .16s var(--ease-out), color .16s var(--ease-out), transform .12s var(--ease-out), opacity .16s var(--ease-out);
+}
+.btn:active:not(:disabled), .icon-btn:active, .chip:active { transform: translateY(1px) scale(.985); }
+
+/* Sliding markers (motion.ts places them with CSS variables). */
+.segmented.has-slider, .auth-tabs.has-slider { position: relative; isolation: isolate; }
+.segmented.has-slider::before, .auth-tabs.has-slider::before {
+  content: ""; position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none;
+  width: var(--slider-w); height: var(--slider-h); opacity: var(--slider-o);
+  transform: translate(var(--slider-x), var(--slider-y));
+  border-radius: 6px; background: var(--surface); box-shadow: 0 0 0 1px var(--line);
+}
+.slider-ready.segmented::before, .slider-ready.auth-tabs::before {
+  transition: transform .24s var(--ease-out), width .24s var(--ease-out), height .24s var(--ease-out), opacity .16s;
+}
+.segmented.has-slider button.on, .auth-tabs.has-slider button.on { background: transparent; box-shadow: none; }
+
+.sidebar { position: relative; }
+.nav-item.active::before { display: none; }
+.sidebar.has-slider::before {
+  content: ""; position: absolute; left: 0; top: 0; width: 3px; border-radius: 0 3px 3px 0; pointer-events: none;
+  height: calc(var(--slider-h) - 14px); opacity: var(--slider-o); background: var(--signal);
+  transform: translateY(calc(var(--slider-y) + 7px));
+}
+.sidebar.slider-ready::before { transition: transform .26s var(--ease-out), opacity .16s; }
+
+/* Tabs enter; the active tab's signal line grows in. */
+.tab:not(.tab-home):not(.tab-new) { animation: tab-in .2s var(--ease-out); }
+@keyframes tab-in { from { opacity: 0; transform: translateY(4px); } }
+.tab.active::after { animation: grow .22s var(--ease-out); transform-origin: center; }
+@keyframes grow { from { transform: scaleX(.2); opacity: 0; } }
+
+/* Layers: enter as before, and now leave too (motion.ts keeps a copy for the exit). */
+.modal-backdrop.leaving { animation: fade-out .15s var(--ease-in) forwards; pointer-events: none; }
+.modal-backdrop.leaving .modal { animation: pop-out .15s var(--ease-in) forwards; }
+.palette.leaving { animation: fade-out .13s var(--ease-in) forwards; pointer-events: none; }
+.palette.leaving .palette-box { animation: pop-out .13s var(--ease-in) forwards; }
+.toast { animation: toast-in .22s var(--ease-out); }
+.toast.leaving { animation: toast-out .18s var(--ease-in) forwards; pointer-events: none; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes pop-out { to { opacity: 0; transform: translateY(4px) scale(.99); } }
+@keyframes toast-in { from { opacity: 0; transform: translateX(14px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(14px); } }
+
+/* Screens of the sign-in flow enter softly. */
+.auth-card, .welcome-inner { animation: screen-in .26s var(--ease-out); }
+@keyframes screen-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* Callouts and errors appear instead of popping. */
+.callout { animation: appear-soft .2s var(--ease-out); }
+@keyframes appear-soft { from { opacity: 0; transform: translateY(-2px); } }
+
+/* Terminal tab shown: a quick fade so switching does not flash. */
+.term-wrap.visible { animation: fade-in .16s var(--ease-out); }
+@keyframes fade-in { from { opacity: 0; } }
+
+/* Spinners inside buttons fade in. */
+.btn .spinner { animation: spin .7s linear infinite, fade-in .15s; }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  .sidebar.slider-ready::before, .slider-ready.segmented::before, .slider-ready.auth-tabs::before { transition: none; }
+}
+
+/* ================================================================== interface guidelines */
+html { -webkit-tap-highlight-color: transparent; }
+@media (pointer: fine) { html { overscroll-behavior: none; } }
+button, a, input, select, textarea, [role="tab"], [role="option"] { touch-action: manipulation; }
+h1, h2, h3 { text-wrap: balance; }
+p, .lead, .subtitle { text-wrap: pretty; }
+.nav-count, .badge, .report dd, .kv dd, .chip span, .fingerprint, .recovery { font-variant-numeric: tabular-nums; }
+.modal-body, .palette-list, .page, .toasts { overscroll-behavior: contain; }
+input[type=search] { width: 100%; height: 36px; padding: 0 11px 0 34px; border-radius: var(--r-md); border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--text); outline: none; font: inherit; }
+input[type=search]:focus { border-color: var(--structure); box-shadow: 0 0 0 3px var(--tint); }
+input[aria-invalid="true"] { border-color: var(--danger); }
+input[aria-invalid="true"] + .field-hint { color: var(--danger); }
+.modal:focus { outline: none; }
+.content:focus { outline: none; }
+
+/* Long lists render only what is on screen. */
+.list > .row, .grid > .card { content-visibility: auto; contain-intrinsic-size: auto 54px; }
+
+/* A real button stretched over a card (the card itself is not clickable markup). */
+.card-hit { position: absolute; inset: 0; border: 0; padding: 0; margin: 0; background: none; border-radius: inherit; cursor: pointer; z-index: 0; }
+.card-hit:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.card > :not(.card-hit) { position: relative; z-index: 1; pointer-events: none; }
+.card > .actions, .card > .actions * { pointer-events: auto; }
+.card:focus-within .actions { opacity: 1; }
+
+/* A list row that is a button. */
+.row-button { width: 100%; border: 0; border-top: 1px solid var(--line); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.row-button:first-child { border-top: 0; }
+.row-button .meta { display: block; }
+.row-button .name { display: block; }
+
+.palette-empty { padding: 14px 12px; color: var(--text-3); }
+
+.skip-link { position: fixed; left: 12px; top: -48px; z-index: 300; padding: 8px 12px; border-radius: var(--r-md);
+  background: var(--structure); color: var(--on-structure); text-decoration: none; transition: top .15s var(--ease-out); }
+.skip-link:focus { top: 12px; }

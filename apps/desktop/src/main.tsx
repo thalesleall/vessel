@@ -7,21 +7,29 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import "./styles.css";
 import "./theme";
+import { installSliders } from "./motion";
 import App from "./App";
 
-// `autofocus` only works on page load; honor it for screens and dialogs added later.
+// For screens and dialogs added after load: honor `autofocus` (the browser only does it on page
+// load), and keep autofill suggestions off fields that are not sign-in fields.
 new MutationObserver((mutations) => {
+  let focused = false;
   for (const m of mutations) {
     for (const node of m.addedNodes) {
       if (!(node instanceof HTMLElement)) continue;
+      const fields = node.matches("input, textarea") ? [node] : [...node.querySelectorAll<HTMLElement>("input, textarea")];
+      for (const f of fields) if (!f.hasAttribute("autocomplete")) f.setAttribute("autocomplete", "off");
+      if (focused) continue;
       const target = node.matches("[autofocus]") ? node : node.querySelector<HTMLElement>("[autofocus]");
       if (target) {
         target.focus();
-        return;
+        focused = true;
       }
     }
   }
 }).observe(document.body, { childList: true, subtree: true });
+
+installSliders();
 
 async function start() {
   // Browser preview with a fake backend: `npm run dev`, then open /?mock (dev builds only).

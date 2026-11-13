@@ -34,7 +34,8 @@ export function VaultsView() {
       <div class="grid">
         <For each={vaults()}>
           {(v) => (
-            <div class="card" onClick={() => setSelected(v.id)} style={{ "border-color": selected() === v.id ? "var(--structure)" : undefined }}>
+            <div class="card" style={{ "border-color": selected() === v.id ? "var(--structure)" : undefined }}>
+              <button class="card-hit" onClick={() => setSelected(v.id)} aria-label={`Abrir cofre ${v.name}`} aria-pressed={selected() === v.id} />
               <div class="avatar" style={{ background: v.color || colorFor(v.name) }}><Icon name={v.personal ? "lock" : "users"} size={18} /></div>
               <div class="meta">
                 <div class="name">{v.name}</div>
@@ -164,7 +165,7 @@ function VaultDetail(props: { vault: VaultView; onClosed: () => void }) {
             <Show when={invite()}>
               {(i) => (
                 <div style={{ "margin-top": "14px" }} class="form">
-                  <div class="code-block">{i().url}<button class="icon-btn" onClick={() => copy(i().url, "Link copiado")}><Icon name="copy" size={15} /></button></div>
+                  <div class="code-block">{i().url}<button class="icon-btn" aria-label="Copiar" onClick={() => copy(i().url, "Link copiado")}><Icon name="copy" size={15} /></button></div>
                   <div class="field-hint">Válido por 7 dias. Depois que a pessoa aceitar, aprove-a aqui conferindo a impressão digital.</div>
                 </div>
               )}

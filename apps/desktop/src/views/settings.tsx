@@ -126,7 +126,7 @@ function ServerAdmin() {
           <Button variant="primary" onClick={async () => { const r = await attempt(() => api.signupInvite(email())); if (r) setLink(r.token); }}>Gerar convite</Button>
         </div>
         <Show when={link()}>
-          <div class="code-block" style={{ "margin-top": "12px" }}>{link()}<button class="icon-btn" onClick={() => copy(link()!, "Código copiado")}><Icon name="copy" size={15} /></button></div>
+          <div class="code-block" style={{ "margin-top": "12px" }}>{link()}<button class="icon-btn" aria-label="Copiar" onClick={() => copy(link()!, "Código copiado")}><Icon name="copy" size={15} /></button></div>
         </Show>
       </div>
     </>

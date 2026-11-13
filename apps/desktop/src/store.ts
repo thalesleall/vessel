@@ -1,4 +1,5 @@
 import { createMemo, createSignal } from "solid-js";
+import { transition } from "./motion";
 import { api, errorMessage, on, type Item, type Kind, type SessionInfo, type Settings, type Status, type VaultView } from "./api";
 
 // ---------------------------------------------------------------------------------------------
@@ -14,9 +15,20 @@ export const [syncError, setSyncError] = createSignal<string | null>(null);
 export const [lastSync, setLastSync] = createSignal<number | null>(null);
 
 /** Which top-level tab is shown: "home" or a terminal session id. */
-export const [activeTab, setActiveTab] = createSignal<string>("home");
+const [activeTab, setActiveTabNow] = createSignal<string>("home");
 export type Section = "hosts" | "terminals" | "keychain" | "snippets" | "forwards" | "vaults" | "agents" | "settings";
-export const [section, setSection] = createSignal<Section>("hosts");
+const [section, setSectionNow] = createSignal<Section>("hosts");
+export { activeTab, section };
+
+/** Switches the visible tab with a short cross-fade. */
+export function setActiveTab(id: string) {
+  if (id !== activeTab()) transition(() => setActiveTabNow(id));
+}
+
+/** Switches the home section with a short cross-fade. */
+export function setSection(s: Section) {
+  if (s !== section()) transition(() => setSectionNow(s));
+}
 
 export function itemsOf<K extends Kind>(kind: K) {
   return createMemo(() => items().filter((i) => i.entity.type === kind) as Item<Extract<Item["entity"], { type: K }>>[]);

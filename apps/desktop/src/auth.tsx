@@ -2,6 +2,7 @@ import { For, Match, Show, Switch, createSignal, onMount } from "solid-js";
 import { api, errorCode, errorMessage, type ServerInfo } from "./api";
 import { copy, refreshStatus, setStatus, status, toast } from "./store";
 import { themePref, setThemePref, type ThemePref } from "./theme";
+import { transition } from "./motion";
 import { Button, Field, Icon, confirmAction } from "./ui";
 
 export function Brand(props: { sub?: string }) {
@@ -31,7 +32,8 @@ function passwordProblem(password: string, confirm: string): string | null {
 type Step = "choose" | "local" | "server";
 
 export function Onboarding() {
-  const [step, setStep] = createSignal<Step>("choose");
+  const [step, setStepNow] = createSignal<Step>("choose");
+  const setStep = (s: Step) => transition(() => setStepNow(s));
   return (
     <Switch>
       <Match when={step() === "choose"}><Welcome onPick={setStep} /></Match>
@@ -158,7 +160,7 @@ function LocalSetup(props: { onBack: () => void }) {
           <p class="lead">Ela desbloqueia o Vessel e protege tudo o que fica salvo neste computador.</p>
           <form class="form" onSubmit={submit}>
             <Field label="Seu nome" hint="Opcional. Aparece no canto da tela.">
-              <input value={name()} onInput={(e) => setName(e.currentTarget.value)} placeholder="Ex.: Ana" autofocus />
+              <input value={name()} onInput={(e) => setName(e.currentTarget.value)} placeholder="Ex.: Ana…" autofocus />
             </Field>
             <Field label="Senha">
               <input type="password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} autocomplete="new-password" required />
@@ -169,8 +171,8 @@ function LocalSetup(props: { onBack: () => void }) {
             <div class="callout callout-warn"><Icon name="alert" size={16} />
               <span>Ninguém consegue recuperar essa senha por você. No próximo passo você recebe uma chave de recuperação.</span>
             </div>
-            <Show when={error()}><div class="callout callout-danger"><Icon name="alert" size={16} />{error()}</div></Show>
-            <Button type="submit" variant="primary" busy={busy()}>Continuar</Button>
+            <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
+            <Button type="submit" variant="primary" busy={busy()}>Criar senha</Button>
           </form>
         </div>
       </Show>
@@ -256,15 +258,15 @@ export function Connect(props: { onBack?: () => void }) {
               <Field label="Endereço do servidor" hint="Ex.: https://vessel.minhaempresa.com">
                 <input type="url" placeholder="https://" value={url()} onInput={(e) => setUrl(e.currentTarget.value)} autofocus />
               </Field>
-              <Show when={error()}><div class="callout callout-danger"><Icon name="alert" size={16} />{error()}</div></Show>
-              <Button type="submit" variant="primary" busy={busy()} disabled={!url().trim()}>Continuar</Button>
+              <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
+              <Button type="submit" variant="primary" busy={busy()} disabled={!url().trim()}>Verificar servidor</Button>
             </form>
           }>
             <div class="form">
               <div class="server-pill">
                 <Icon name="server" size={15} />
                 <span style={{ flex: 1 }}>{info()!.name} em {info()!.server_id}</span>
-                <button class="icon-btn" title="Trocar servidor" onClick={() => setInfo(null)}><Icon name="edit" size={14} /></button>
+                <button class="icon-btn" aria-label="Trocar servidor" title="Trocar servidor" onClick={() => setInfo(null)}><Icon name="edit" size={14} /></button>
               </div>
               <div class="auth-tabs" role="tablist">
                 <button role="tab" classList={{ on: mode() === "login" }} onClick={() => setMode("login")}>Entrar</button>
@@ -302,7 +304,7 @@ export function Connect(props: { onBack?: () => void }) {
                     <span>A senha nunca sai deste computador. Se você a esquecer, só a chave de recuperação devolve o acesso.</span>
                   </div>
                 </Show>
-                <Show when={error()}><div class="callout callout-danger"><Icon name="alert" size={16} />{error()}</div></Show>
+                <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
                 <Button type="submit" variant="primary" busy={busy()}>
                   {mode() === "login" ? "Entrar" : mode() === "signup" ? "Criar conta" : "Redefinir senha"}
                 </Button>
@@ -400,7 +402,7 @@ export function Unlock() {
             <Field label="Senha">
               <input type="password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} autofocus autocomplete="current-password" />
             </Field>
-            <Show when={error()}><div class="callout callout-danger"><Icon name="alert" size={16} />{error()}</div></Show>
+            <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
             <Button type="submit" variant="primary" icon="lock" busy={busy()} disabled={!password()}>Desbloquear</Button>
           </form>
           <div style={{ display: "flex", "justify-content": "space-between", "margin-top": "18px" }}>
@@ -455,7 +457,7 @@ function LocalRecovery(props: { onBack: () => void }) {
         <Field label="Confirme a senha">
           <input type="password" value={password2()} onInput={(e) => setPassword2(e.currentTarget.value)} autocomplete="new-password" required />
         </Field>
-        <Show when={error()}><div class="callout callout-danger"><Icon name="alert" size={16} />{error()}</div></Show>
+        <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
         <Button type="submit" variant="primary" busy={busy()}>Redefinir senha</Button>
       </form>
     </div>

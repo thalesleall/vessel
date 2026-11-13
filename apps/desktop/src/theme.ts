@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js";
+import { transition } from "./motion";
 
 /** Interface theme. A per-computer preference, so it lives in localStorage, not in the vault. */
 export type ThemePref = "system" | "dark" | "light";
@@ -34,8 +35,10 @@ export function setThemePref(p: ThemePref) {
   } catch {
     /* preference is only remembered when storage works */
   }
-  setPrefSignal(p);
-  apply();
+  transition(() => {
+    setPrefSignal(p);
+    apply();
+  });
 }
 
 media.addEventListener("change", apply);

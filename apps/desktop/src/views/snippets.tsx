@@ -39,15 +39,15 @@ export function SnippetsView() {
             <div class="list">
               <For each={sessions().filter((x) => x.alive)}>
                 {(t) => (
-                  <div class="row" style={{ cursor: "pointer" }} onClick={async () => {
+                  <button class="row row-button" onClick={async () => {
                     await api.write(t.id, s().entity.data.script.replace(/\n/g, "\r") + "\r");
                     setRunning(null);
                     setActiveTab(t.id);
                     toast("Snippet enviado", "success");
                   }}>
                     <Icon name={t.kind.kind === "ssh" ? "server" : "terminal"} />
-                    <div class="meta"><div class="name">{t.title}</div></div>
-                  </div>
+                    <span class="meta"><span class="name">{t.title}</span></span>
+                  </button>
                 )}
               </For>
             </div>

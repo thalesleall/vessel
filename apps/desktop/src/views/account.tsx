@@ -62,7 +62,7 @@ export function Account() {
           <dt>E-mail</dt><dd>{status()?.email}</dd>
           <dt>Servidor</dt><dd class="mono">{status()?.server_url}</dd>
           <dt>Impressão digital</dt><dd><span class="fingerprint">{status()?.fingerprint}</span>
-            <button class="icon-btn" style={{ display: "inline-grid", "vertical-align": "middle" }} title="Copiar"
+            <button class="icon-btn" aria-label="Copiar" style={{ display: "inline-grid", "vertical-align": "middle" }} title="Copiar"
               onClick={() => copy(status()?.fingerprint ?? "")}><Icon name="copy" size={14} /></button></dd>
         </dl>
       }>
@@ -152,15 +152,15 @@ function ConnectServer(props: { onClose: () => void; onDone: (o: MigrationOutcom
           <Field label="Endereço do servidor" hint="Ex.: https://vessel.minhaempresa.com">
             <input type="url" placeholder="https://" value={url()} onInput={(e) => setUrl(e.currentTarget.value)} autofocus />
           </Field>
-          <Show when={error()}><div class="callout callout-danger"><Icon name="alert" size={16} />{error()}</div></Show>
-          <Button type="submit" variant="primary" busy={busy()} disabled={!url().trim()}>Continuar</Button>
+          <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
+          <Button type="submit" variant="primary" busy={busy()} disabled={!url().trim()}>Verificar servidor</Button>
         </form>
       }>
         <form class="form" onSubmit={submit}>
           <div class="server-pill">
             <Icon name="server" size={15} />
             <span style={{ flex: 1 }}>{info()!.name} em {info()!.server_id}</span>
-            <button type="button" class="icon-btn" title="Trocar servidor" onClick={() => setInfo(null)}><Icon name="edit" size={14} /></button>
+            <button type="button" class="icon-btn" aria-label="Trocar servidor" title="Trocar servidor" onClick={() => setInfo(null)}><Icon name="edit" size={14} /></button>
           </div>
           <div class="auth-tabs" role="tablist" style={{ "margin-bottom": 0 }}>
             <button type="button" role="tab" classList={{ on: mode() === "new" }} onClick={() => setMode("new")}>Criar conta</button>
@@ -192,7 +192,7 @@ function ConnectServer(props: { onClose: () => void; onDone: (o: MigrationOutcom
               <span>O que está aqui é somado ao que já existe na conta, sem duplicar itens idênticos. A senha e a chave de recuperação passam a ser as da conta.</span>
             </div>
           </Show>
-          <Show when={error()}><div class="callout callout-danger"><Icon name="alert" size={16} />{error()}</div></Show>
+          <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
           <Button type="submit" variant="primary" busy={busy()}>
             {mode() === "new" ? "Criar conta e enviar meus dados" : "Entrar e somar meus dados"}
           </Button>

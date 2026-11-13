@@ -1,6 +1,7 @@
 import { For, Show, createSignal, onCleanup, onMount, type JSX, type ParentProps } from "solid-js";
 import { Portal } from "solid-js/web";
 import { toasts } from "./store";
+import { exitCopy } from "./motion";
 
 // ---------------------------------------------------------------------------------------------
 // Icons (inline, stroke-based)
@@ -89,7 +90,7 @@ export function ShellIcon(props: { shell?: ShellLike; ssh?: boolean; size?: numb
   const size = () => props.size ?? 18;
   const b = () => badgeFor(props.shell, !!props.ssh);
   return (
-    <span class="shell-icon" title={b().title}
+    <span class="shell-icon" title={b().title} aria-hidden="true"
       style={{ width: `${size()}px`, height: `${size()}px`, background: props.color || b().bg, "border-radius": `${Math.round(size() * 0.26)}px` }}>
       <Show when={b().glyph} fallback={<Icon name={b().icon ?? "terminal"} size={Math.round(size() * 0.66)} />}>
         <span class="glyph" style={{ "font-size": `${Math.max(7, Math.round(size() * (b().glyph!.length > 2 ? 0.4 : 0.5)))}px` }}>{b().glyph}</span>
@@ -113,7 +114,7 @@ export function Button(props: ParentProps<{
   busy?: boolean;
 }>) {
   return (
-    <button type={props.type ?? "button"} title={props.title}
+    <button type={props.type ?? "button"} title={props.title} aria-label={props.children ? undefined : props.title} aria-busy={props.busy || undefined}
       class={`btn btn-${props.variant ?? "subtle"} ${props.small ? "btn-sm" : ""}`}
       disabled={props.disabled || props.busy} onClick={(e) => props.onClick?.(e)}>
       <Show when={props.busy} fallback={<Show when={props.icon}><Icon name={props.icon!} size={16} /></Show>}>
@@ -134,17 +135,49 @@ export function Field(props: ParentProps<{ label: string; hint?: string }>) {
   );
 }
 
+/**
+ * Dialog. Escape, the close button and a click outside ask before discarding typed changes;
+ * focus moves into the dialog and returns to where it was when it closes.
+ */
 export function Modal(props: ParentProps<{ title: string; onClose: () => void; wide?: boolean; footer?: JSX.Element }>) {
-  const onKey = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
-  onMount(() => document.addEventListener("keydown", onKey));
-  onCleanup(() => document.removeEventListener("keydown", onKey));
+  let backdrop: HTMLDivElement | undefined;
+  let dialog: HTMLDivElement | undefined;
+  let dirty = false;
+  const opener = document.activeElement as HTMLElement | null;
+  const dismiss = async () => {
+    if (dirty && !(await confirmAction({
+      title: "Descartar alterações?",
+      message: "O que você digitou neste formulário ainda não foi salvo.",
+      confirm: "Descartar",
+    }))) return;
+    props.onClose();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    // Only the topmost dialog reacts.
+    if (e.key === "Escape" && backdrop && backdrop === [...document.querySelectorAll(".modal-backdrop:not(.leaving)")].pop()) {
+      e.stopPropagation();
+      dismiss();
+    }
+  };
+  onMount(() => {
+    document.addEventListener("keydown", onKey);
+    queueMicrotask(() => {
+      if (dialog && !dialog.contains(document.activeElement)) dialog.focus();
+    });
+  });
+  onCleanup(() => {
+    document.removeEventListener("keydown", onKey);
+    exitCopy(backdrop, "leaving", 150);
+    if (opener?.isConnected) opener.focus();
+  });
   return (
     <Portal>
-      <div class="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-        <div class={`modal ${props.wide ? "modal-wide" : ""}`} role="dialog" aria-label={props.title}>
+      <div class="modal-backdrop" ref={backdrop} onMouseDown={(e) => e.target === e.currentTarget && dismiss()}>
+        <div ref={dialog} class={`modal ${props.wide ? "modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={props.title}
+          tabIndex={-1} onInput={() => (dirty = true)}>
           <header class="modal-header">
             <h2>{props.title}</h2>
-            <button class="icon-btn" onClick={() => props.onClose()} title="Fechar"><Icon name="x" /></button>
+            <button class="icon-btn" aria-label="Fechar" onClick={() => dismiss()} title="Fechar"><Icon name="x" /></button>
           </header>
           <div class="modal-body">{props.children}</div>
           <Show when={props.footer}><footer class="modal-footer">{props.footer}</footer></Show>
@@ -166,9 +199,13 @@ export function Empty(props: ParentProps<{ icon: string; title: string }>) {
 
 export function Toasts() {
   return (
-    <div class="toasts">
+    <div class="toasts" aria-live="polite" aria-atomic="false">
       <For each={toasts()}>
-        {(t) => <div class={`toast toast-${t.kind}`}>{t.text}</div>}
+        {(t) => {
+          let el: HTMLDivElement | undefined;
+          onCleanup(() => exitCopy(el, "leaving", 180, true));
+          return <div ref={el} class={`toast toast-${t.kind}`} role="status">{t.text}</div>;
+        }}
       </For>
     </div>
   );
@@ -217,10 +254,12 @@ export function colorFor(text: string): string {
   return palette[h % palette.length];
 }
 
+const relative = new Intl.RelativeTimeFormat(navigator.language || "pt-BR", { numeric: "auto", style: "short" });
+
 export function timeAgo(unixSeconds: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000 - unixSeconds));
-  if (s < 60) return "agora";
-  if (s < 3600) return `há ${Math.floor(s / 60)} min`;
-  if (s < 86400) return `há ${Math.floor(s / 3600)} h`;
-  return `há ${Math.floor(s / 86400)} d`;
+  if (s < 60) return relative.format(0, "second");
+  if (s < 3600) return relative.format(-Math.floor(s / 60), "minute");
+  if (s < 86400) return relative.format(-Math.floor(s / 3600), "hour");
+  return relative.format(-Math.floor(s / 86400), "day");
 }

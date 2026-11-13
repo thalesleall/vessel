@@ -25,14 +25,15 @@ export function ProfilesView() {
         <div class="grid">
           <For each={profiles()}>
             {(p) => (
-              <div class="card" onClick={() => openProfile(p.id)}>
+              <div class="card">
+                <button class="card-hit" onClick={() => openProfile(p.id)} aria-label={`Abrir ${p.entity.data.label}`} title="Abrir terminal" />
                 <ShellIcon shell={p.entity.data.shell} color={p.entity.data.color} size={38} />
                 <div class="meta">
                   <div class="name">{p.entity.data.label}</div>
                   <div class="sub">{shellLabel(p.entity.data.shell)}{p.entity.data.cwd ? `, ${p.entity.data.cwd}` : ""}</div>
                 </div>
-                <div class="actions" onClick={(e) => e.stopPropagation()}>
-                  <button class="icon-btn" title="Editar" onClick={() => setEditing(p)}><Icon name="edit" size={15} /></button>
+                <div class="actions">
+                  <button class="icon-btn" aria-label="Editar" title="Editar" onClick={() => setEditing(p)}><Icon name="edit" size={15} /></button>
                 </div>
               </div>
             )}

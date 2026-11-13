@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
-import { api, shellLabel } from "./api";
+import { api, shellLabel, type Shell } from "./api";
 import {
   activeTab, itemsOf, lastSync, section, sessions, setActiveTab, setSection, setStatus, settings, status, syncError, syncing,
   refreshSessions, type Section,
@@ -7,6 +7,7 @@ import {
 import { HostKeyPrompt, TerminalView, connectHost, openProfile } from "./terminal";
 import { Icon, ShellIcon, colorFor, initials } from "./ui";
 import { Brand } from "./auth";
+import { exitCopy } from "./motion";
 import { HostsView } from "./views/hosts";
 import { ProfilesView } from "./views/profiles";
 import { KeychainView } from "./views/keychain";
@@ -39,6 +40,7 @@ function Sidebar() {
           <>
             <Show when={n.id === "vaults"}><div class="nav-sep" /></Show>
             <button class="nav-item" classList={{ active: activeTab() === "home" && section() === n.id }}
+              aria-current={activeTab() === "home" && section() === n.id ? "page" : undefined}
               onClick={() => { setSection(n.id); setActiveTab("home"); }}>
               <Icon name={n.icon} />
               <span>{n.label}</span>
@@ -66,7 +68,7 @@ function Sidebar() {
             <div class="email">{status()?.email}</div>
             <div class="sync-line" style={{ padding: 0 }}>{status()?.local ? "Este computador" : status()?.server_url?.replace(/^https?:\/\//, "")}</div>
           </div>
-          <button class="icon-btn" title="Bloquear (Ctrl+L)" onClick={lock}><Icon name="lock" size={16} /></button>
+          <button class="icon-btn" aria-label="Bloquear (Ctrl+L)" title="Bloquear (Ctrl+L)" onClick={lock}><Icon name="lock" size={16} /></button>
         </div>
       </div>
     </aside>
@@ -88,27 +90,39 @@ function TabBar() {
     else setSection("terminals");
   };
   return (
-    <div class="tabbar">
-      <button class="tab tab-home" classList={{ active: activeTab() === "home" }} onClick={() => setActiveTab("home")} title="Início">
+    <div class="tabbar" role="tablist" aria-label="Abas">
+      <button class="tab tab-home" role="tab" aria-selected={activeTab() === "home"} classList={{ active: activeTab() === "home" }}
+        onClick={() => setActiveTab("home")} title="Início" aria-label="Início">
         <Icon name="vault" size={16} />
       </button>
-      <For each={sessions()}>
-        {(s) => (
-          <div class="tab" classList={{ active: activeTab() === s.id }} onClick={() => setActiveTab(s.id)} role="tab">
-            <span class="state" classList={{ dead: !s.alive }} />
-            <ShellIcon ssh={s.kind.kind === "ssh"} shell={s.kind.kind === "local" ? s.kind.shell_kind : null} size={16} />
-            <span class="title" title={s.kind.kind === "ssh" ? s.kind.address : s.kind.shell}>{s.title}</span>
-            <Show when={s.by_agent}><span class="agent-flag" title="Aberto por um agente de IA">IA</span></Show>
-            <button class="close" onClick={(e) => close(s.id, e)} title="Fechar"><Icon name="x" size={13} /></button>
-          </div>
-        )}
+      {/* Keyed by id (strings compare by value), so refreshing the list does not rebuild tabs. */}
+      <For each={sessions().map((x) => x.id)}>
+        {(id) => {
+          const s = () => sessions().find((x) => x.id === id);
+          return (
+            <Show when={s()}>
+              {(s) => (
+                <div class="tab" classList={{ active: activeTab() === id }} onClick={() => setActiveTab(id)} role="tab"
+                  aria-selected={activeTab() === id} tabIndex={0} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveTab(id)}>
+                  <span class="state" classList={{ dead: !s().alive }} />
+                  <ShellIcon ssh={s().kind.kind === "ssh"} shell={s().kind.kind === "local" ? (s().kind as { shell_kind?: Shell }).shell_kind : null} size={16} />
+                  <span class="title" title={s().kind.kind === "ssh" ? (s().kind as { address: string }).address : (s().kind as { shell: string }).shell}>{s().title}</span>
+                  <Show when={s().by_agent}><span class="agent-flag" title="Aberto por um agente de IA">IA</span></Show>
+                  <button class="close" onClick={(e) => close(id, e)} title="Fechar" aria-label={`Fechar ${s().title}`}><Icon name="x" size={13} /></button>
+                </div>
+              )}
+            </Show>
+          );
+        }}
       </For>
-      <button class="tab tab-new" onClick={quickOpen} title="Novo terminal (Ctrl+T)"><Icon name="plus" size={16} /></button>
+      <button class="tab tab-new" onClick={quickOpen} title="Novo terminal (Ctrl+T)" aria-label="Novo terminal"><Icon name="plus" size={16} /></button>
     </div>
   );
 }
 
 function Palette(props: { onClose: () => void }) {
+  let paletteEl: HTMLDivElement | undefined;
+  onCleanup(() => exitCopy(paletteEl, "leaving", 130));
   const [query, setQuery] = createSignal("");
   const [sel, setSel] = createSignal(0);
   const hosts = itemsOf("host");
@@ -131,9 +145,11 @@ function Palette(props: { onClose: () => void }) {
     e.run();
   };
   return (
-    <div class="palette" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
+    <div class="palette" ref={paletteEl} onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class="palette-box">
         <input autofocus placeholder="Conectar a um host, abrir um terminal, ir para…" value={query()}
+          role="combobox" aria-label="Buscar comando" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"
+          aria-activedescendant={entries().length ? `palette-${sel()}` : undefined}
           onInput={(e) => { setQuery(e.currentTarget.value); setSel(0); }}
           onKeyDown={(e) => {
             if (e.key === "Escape") props.onClose();
@@ -141,10 +157,11 @@ function Palette(props: { onClose: () => void }) {
             if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); }
             if (e.key === "Enter") run(entries()[sel()]);
           }} />
-        <div class="palette-list">
-          <For each={entries()}>
+        <div class="palette-list" id="palette-list" role="listbox" aria-label="Resultados">
+          <For each={entries()} fallback={<div class="palette-empty">Nada encontrado para essa busca.</div>}>
             {(e, i) => (
-              <div class="palette-item" classList={{ sel: i() === sel() }} onMouseEnter={() => setSel(i())} onClick={() => run(e)}>
+              <div class="palette-item" id={`palette-${i()}`} role="option" aria-selected={i() === sel()} classList={{ sel: i() === sel() }}
+                onMouseEnter={() => setSel(i())} onClick={() => run(e)}>
                 {e.badge ? e.badge() : <Icon name={e.icon} size={16} />}<span>{e.label}</span><span class="hint">{e.hint}</span>
               </div>
             )}
@@ -190,10 +207,11 @@ export function Workspace() {
 
   return (
     <div class="app">
+      <a class="skip-link" href="#content" onClick={(e) => { e.preventDefault(); document.getElementById("content")?.focus(); }}>Ir para o conteúdo</a>
       <Sidebar />
       <main class="main">
         <TabBar />
-        <div class="content">
+        <div class="content" id="content" tabIndex={-1}>
           <Show when={activeTab() === "home"}>
             <div class="page" ref={(el) => createEffect(on(section, () => (el.scrollTop = 0)))}>
               <Switch>

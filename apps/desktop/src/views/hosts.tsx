@@ -32,7 +32,7 @@ export function HostsView() {
         <h1>Hosts</h1>
         <div class="spacer" />
         <div class="search"><Icon name="search" size={16} />
-          <input placeholder="Buscar hosts, endereços, tags…" value={query()} onInput={(e) => setQuery(e.currentTarget.value)} />
+          <input type="search" aria-label="Buscar hosts" placeholder="Buscar hosts, endereços, tags…" value={query()} onInput={(e) => setQuery(e.currentTarget.value)} />
         </div>
         <Button icon="folder" onClick={() => setEditingGroup("new")}>Novo grupo</Button>
         <Button variant="primary" icon="plus" onClick={() => setEditing("new")}>Novo host</Button>
@@ -40,16 +40,19 @@ export function HostsView() {
 
       <Show when={groups().length > 0}>
         <div class="chips">
-          <button class="chip" classList={{ on: group() === null }} onClick={() => setGroup(null)}>Todos</button>
+          <button class="chip" classList={{ on: group() === null }} aria-pressed={group() === null} onClick={() => setGroup(null)}>Todos</button>
           <For each={groups()}>
             {(g) => (
-              <button class="chip" classList={{ on: group() === g.id }} onClick={() => setGroup(g.id)}
-                onDblClick={() => setEditingGroup(g)} title="Duplo clique para editar">
+              <button class="chip" classList={{ on: group() === g.id }} aria-pressed={group() === g.id} onClick={() => setGroup(g.id)}
+                onDblClick={() => setEditingGroup(g)} onKeyDown={(e) => e.key === "F2" && setEditingGroup(g)} title="Duplo clique ou F2 para editar">
                 <Icon name="folder" size={13} />{g.entity.data.label}
                 <span style={{ color: "var(--text-3)" }}>{hosts().filter((h) => h.entity.data.group_id === g.id).length}</span>
               </button>
             )}
           </For>
+          <Show when={groups().find((g) => g.id === group())}>
+            {(g) => <button class="icon-btn" aria-label={`Editar grupo ${g().entity.data.label}`} title="Editar grupo" onClick={() => setEditingGroup(g())}><Icon name="edit" size={14} /></button>}
+          </Show>
         </div>
       </Show>
 
@@ -65,7 +68,8 @@ export function HostsView() {
               const d = () => h.entity.data;
               const title = () => d().label || d().address;
               return (
-                <div class="card" onClick={() => connectHost(h.id)} title="Conectar">
+                <div class="card">
+                  <button class="card-hit" onClick={() => connectHost(h.id)} aria-label={`Conectar a ${title()}`} title="Conectar" />
                   <div class="avatar" style={{ background: d().color || colorFor(title()) }}>
                     <Show when={connecting() === h.id} fallback={initials(title())}><span class="spinner" /></Show>
                   </div>
@@ -75,8 +79,8 @@ export function HostsView() {
                     <Show when={vaults().length > 1}><div class="sub">{vaultName(h.vault_id)}</div></Show>
                   </div>
                   <Show when={h.pending}><Badge tone="amber">não enviado</Badge></Show>
-                  <div class="actions" onClick={(e) => e.stopPropagation()}>
-                    <button class="icon-btn" title="Editar" onClick={() => setEditing(h)}><Icon name="edit" size={15} /></button>
+                  <div class="actions">
+                    <button class="icon-btn" aria-label="Editar" title="Editar" onClick={() => setEditing(h)}><Icon name="edit" size={15} /></button>
                   </div>
                 </div>
               );
@@ -98,8 +102,15 @@ function HostEditor(props: { item: HostItem | null; group: string | null; onClos
   const [busy, setBusy] = createSignal(false);
   const set = <K extends keyof Host>(k: K, v: Host[K]) => setD((x) => ({ ...x, [k]: v }));
 
+  const [error, setError] = createSignal<string | null>(null);
+  let addressInput: HTMLInputElement | undefined;
   const save = async () => {
-    if (!d().address.trim()) return;
+    if (!d().address.trim()) {
+      setError("Informe o endereço do host.");
+      addressInput?.focus();
+      return;
+    }
+    setError(null);
     setBusy(true);
     const host: Host = { ...d(), address: d().address.trim(), tags: splitTags(tags()), username: d().username?.trim() || null, password: d().password || null };
     if (await saveEntity(props.item, vault(), { type: "host", data: host })) props.onClose();
@@ -112,7 +123,7 @@ function HostEditor(props: { item: HostItem | null; group: string | null; onClos
         onDelete={props.item ? async () => { await removeItem(props.item!, "o host"); props.onClose(); } : undefined} />}>
       <div class="form">
         <div class="form-row-3">
-          <Field label="Endereço"><input value={d().address} onInput={(e) => set("address", e.currentTarget.value)} placeholder="192.168.0.10 ou servidor.com" autofocus /></Field>
+          <Field label="Endereço" hint={error() ?? undefined}><input ref={addressInput} value={d().address} aria-invalid={!!error()} onInput={(e) => { set("address", e.currentTarget.value); setError(null); }} placeholder="192.168.0.10 ou servidor.com…" autofocus /></Field>
           <Field label="Porta"><input type="number" value={d().port ?? ""} placeholder="22" onInput={(e) => set("port", e.currentTarget.value ? Number(e.currentTarget.value) : null)} /></Field>
           <Field label="Cofre"><VaultSelect value={vault()} onChange={setVault} /></Field>
         </div>
@@ -140,7 +151,7 @@ function HostEditor(props: { item: HostItem | null; group: string | null; onClos
           <Field label="Tags" hint="Separadas por vírgula."><input value={tags()} onInput={(e) => setTags(e.currentTarget.value)} placeholder="prod, banco" /></Field>
           <Field label="Keepalive (s)"><input type="number" value={d().keepalive_secs ?? ""} placeholder="30" onInput={(e) => set("keepalive_secs", e.currentTarget.value ? Number(e.currentTarget.value) : null)} /></Field>
         </div>
-        <Field label="Notas"><textarea value={d().notes} onInput={(e) => set("notes", e.currentTarget.value)} style={{ "font-family": "var(--font)" }} /></Field>
+        <Field label="Notas"><textarea value={d().notes} spellcheck={true} onInput={(e) => set("notes", e.currentTarget.value)} style={{ "font-family": "var(--font)" }} /></Field>
       </div>
     </Modal>
   );
