@@ -5,6 +5,7 @@
 //! vault and pushes change notifications over WebSocket.
 
 mod accounts;
+pub mod backup;
 mod auth;
 mod config;
 mod db;

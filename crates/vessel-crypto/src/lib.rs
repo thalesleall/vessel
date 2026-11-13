@@ -13,6 +13,7 @@
 //! public keys and the server half of OPAQUE (behind the `server` feature).
 
 pub mod account;
+pub mod backup;
 mod aead;
 pub mod envelope;
 pub mod error;
