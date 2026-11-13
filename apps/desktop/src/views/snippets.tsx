@@ -36,6 +36,8 @@ export function SnippetsView() {
       <Show when={running()}>
         {(s) => (
           <Modal title={`Executar "${s().entity.data.label}"`} onClose={() => setRunning(null)}>
+            <p class="confirm-text" style={{ "margin-bottom": "8px" }}>Este é o script inteiro que será digitado no terminal escolhido:</p>
+            <div class="code-block" style={{ "margin-bottom": "14px", "max-height": "220px", overflow: "auto", "padding-right": "14px" }}>{s().entity.data.script}</div>
             <div class="list">
               <For each={sessions().filter((x) => x.alive)}>
                 {(t) => (

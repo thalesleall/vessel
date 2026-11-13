@@ -2,7 +2,7 @@ import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 import { api, blank, type Item, type PortForward } from "../api";
 import { byId, itemsOf, toast } from "../store";
 import { withHostKeyCheck } from "../terminal";
-import { Badge, Button, Empty, Field, Icon, Modal } from "../ui";
+import { Badge, Button, Empty, Field, Icon, Modal, confirmAction } from "../ui";
 import { EditorFooter, ItemSelect, VaultSelect, defaultVault, labelOf, removeItem, saveEntity } from "./common";
 
 type ForwardItem = Item<{ type: "port_forward"; data: PortForward }>;
@@ -10,8 +10,14 @@ type ForwardItem = Item<{ type: "port_forward"; data: PortForward }>;
 function describe(r: PortForward) {
   const bind = r.bind_address || "127.0.0.1";
   if (r.kind === "dynamic") return `SOCKS5 em ${bind}:${r.bind_port}`;
-  if (r.kind === "remote") return `remoto :${r.bind_port} → ${r.dest_host}:${r.dest_port}`;
+  if (r.kind === "remote") return `remoto ${bind}:${r.bind_port} → ${r.dest_host}:${r.dest_port}`;
   return `${bind}:${r.bind_port} → ${r.dest_host}:${r.dest_port}`;
+}
+
+/** A local or SOCKS listener reachable from other machines on the network. */
+function exposed(r: PortForward) {
+  const bind = (r.bind_address || "127.0.0.1").trim();
+  return r.kind !== "remote" && !["127.0.0.1", "localhost", "::1", "[::1]"].includes(bind);
 }
 
 export function ForwardsView() {
@@ -25,6 +31,11 @@ export function ForwardsView() {
   const start = async (r: ForwardItem) => {
     const hostId = r.entity.data.host_id;
     if (!hostId) return toast("Escolha um host para a regra.", "error");
+    if (exposed(r.entity.data) && !(await confirmAction({
+      title: "Abrir a porta para a rede?",
+      message: `Esta regra escuta em ${r.entity.data.bind_address}:${r.entity.data.bind_port}, não só neste computador. Outros computadores da rede vão poder usar o túnel${r.entity.data.kind === "dynamic" ? " (um proxy SOCKS sem senha)" : ""}.`,
+      confirm: "Iniciar mesmo assim",
+    }))) return;
     await withHostKeyCheck(hostId, async (trust) => {
       await api.startForward(r.id, trust);
       toast(`Redirecionamento ativo: ${describe(r.entity.data)}`, "success");
@@ -51,6 +62,7 @@ export function ForwardsView() {
                   <div class="meta">
                     <div class="name">{r.entity.data.label || describe(r.entity.data)}</div>
                     <div class="sub">{describe(r.entity.data)}, via {host() ? labelOf(host()!) : "?"}</div>
+                    <Show when={exposed(r.entity.data)}><div class="sub" style={{ color: "var(--warn)" }}>Aberto para a rede</div></Show>
                   </div>
                   <Show when={st()?.running}><Badge tone="green">ativo</Badge></Show>
                   <Show when={st()?.error}><Badge tone="red">{st()!.error}</Badge></Show>

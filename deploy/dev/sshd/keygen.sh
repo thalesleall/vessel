@@ -3,7 +3,9 @@
 set -eu
 cd /lab
 if [ -f password ]; then echo "keygen: credentials already exist"; exit 0; fi
-rand() { head -c 64 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c "$1"; }
+# Exactly $1 alphanumeric characters: keep drawing until there are enough (a fixed 64-byte
+# draw filtered to [A-Za-z0-9] can come up short).
+rand() { tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "$1"; }
 rand 16 > password
 rand 16 > passphrase
 rand 20 > bot-password
@@ -22,5 +24,6 @@ Passphrase ............. $(cat passphrase)
 Conta de teste (vessel-dev) ... bot@vessel.test
 Senha da conta de teste ....... $(cat bot-password)
 TXT
-chmod 644 ./*
+chmod 600 ./*
+chmod 644 ./*.pub authorized_keys
 echo "keygen: created test credentials in deploy/dev/.lab"

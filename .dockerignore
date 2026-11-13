@@ -3,6 +3,10 @@ target
 apps/desktop/dist
 apps/desktop/src-tauri/gen
 .claude
-*.db
-*.db-wal
-*.db-shm
+**/*.db
+**/*.db-wal
+**/*.db-shm
+# Never send secrets, local state or history into the build context.
+.git
+deploy/.env
+deploy/dev/.lab
