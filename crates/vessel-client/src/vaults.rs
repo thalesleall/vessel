@@ -74,6 +74,7 @@ fn meta_context(vault_id: Uuid, key_version: u32) -> RecordContext {
         vault_id: *vault_id.as_bytes(),
         record_id: *vault_id.as_bytes(),
         key_version,
+        revision: None,
     }
 }
 
@@ -694,8 +695,13 @@ impl Vessel {
             let mut ops = Vec::with_capacity(stale.len());
             for record in &stale {
                 let entity = self.open_entity(&vault_id, record)?;
-                let (key_version, blob) =
-                    self.seal_entity(&vault_id, &record.id, entity.as_ref())?;
+                let (key_version, blob) = self.seal_entity(
+                    &vault_id,
+                    &record.id,
+                    entity.as_ref(),
+                    record.version,
+                    record.deleted,
+                )?;
                 ops.push(PushOp {
                     id: record.id,
                     base_version: record.version,

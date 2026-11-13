@@ -177,7 +177,7 @@ export interface MembersView {
 
 export interface InviteResponse { token: string; url: string; expires_at: number }
 export interface DeviceInfo { id: Uuid; name: string; created_at: number; last_seen_at: number; current: boolean }
-export interface SyncReport { pulled: number; pushed: number; conflicts: number; vaults: number }
+export interface SyncReport { pulled: number; pushed: number; conflicts: number; vaults: number; rescued: number }
 export interface ConflictView {
   id: number;
   vault_id: Uuid;

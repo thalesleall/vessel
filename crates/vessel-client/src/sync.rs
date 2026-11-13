@@ -17,6 +17,9 @@ pub struct SyncReport {
     pub pushed: usize,
     pub conflicts: usize,
     pub vaults: usize,
+    /// Unsent edits of a vault that disappeared (deleted, or access lost), kept as new items
+    /// in the personal vault.
+    pub rescued: usize,
 }
 
 impl Vessel {
@@ -33,6 +36,7 @@ impl Vessel {
         let remote_ids: BTreeSet<Uuid> = remote.iter().map(|v| v.vault_id).collect();
         for local in self.store.vaults()? {
             if !remote_ids.contains(&local.vault_id) {
+                report.rescued += self.rescue_pending(local.vault_id)?;
                 self.store.remove_vault(&local.vault_id)?;
             }
         }
@@ -59,6 +63,9 @@ impl Vessel {
             report.conflicts += conflicts;
 
             let summary = self.store.vault(&vault)?.unwrap_or(summary);
+            if let Err(e) = self.upgrade_envelopes(vault, &summary).await {
+                tracing::warn!(%vault, "envelope upgrade: {e}");
+            }
             if summary.role.can_manage() {
                 if summary.rotation_due {
                     // Someone left or was removed and the vault still uses a key they may hold.
@@ -84,6 +91,77 @@ impl Vessel {
         Ok(report)
     }
 
+    /// Edits not yet sent to a vault that is gone would be lost with it: they become new items
+    /// in the personal vault. Returns how many.
+    fn rescue_pending(&mut self, vault: Uuid) -> Result<usize> {
+        let Ok(personal) = self.personal_vault() else {
+            return Ok(0);
+        };
+        if personal == vault {
+            return Ok(0);
+        }
+        let mut rescued = 0;
+        for p in self.store.pending(Some(&vault))? {
+            if p.deleted {
+                continue;
+            }
+            let payload: PendingPayload = self.open_local(&p.payload)?;
+            if let Some(entity) = payload.entity {
+                self.save(personal, None, entity)?;
+                rescued += 1;
+            }
+        }
+        if rescued > 0 {
+            tracing::warn!(%vault, rescued, "vault gone; unsent edits kept in the personal vault");
+        }
+        Ok(rescued)
+    }
+
+    /// Rewrites format 1 envelopes as format 2 (writers only, a batch per sync), and marks the
+    /// vault as upgraded once this device holds no format 1 record of it.
+    async fn upgrade_envelopes(&mut self, vault: Uuid, summary: &VaultSummary) -> Result<()> {
+        if self.v2_vaults()?.contains(&vault) {
+            return Ok(());
+        }
+        let legacy: Vec<RecordDto> = self
+            .store
+            .records(&vault)?
+            .into_iter()
+            .filter(|r| {
+                vessel_crypto::envelope::format_version(r.blob.as_slice())
+                    == Some(vessel_crypto::envelope::FORMAT_V1)
+            })
+            .collect();
+        if legacy.is_empty() {
+            let mut set = self.v2_vaults()?;
+            set.insert(vault);
+            return self.store.set(crate::items::V2_VAULTS_KEY, &set);
+        }
+        if !summary.role.can_write() || summary.state == VaultState::Rotating {
+            return Ok(());
+        }
+        let mut ops = Vec::new();
+        for record in legacy.iter().take(MAX_BATCH) {
+            let entity = self.open_entity(&vault, record)?;
+            let (key_version, blob) =
+                self.seal_entity(&vault, &record.id, entity.as_ref(), record.version, record.deleted)?;
+            ops.push(PushOp {
+                id: record.id,
+                base_version: record.version,
+                key_version,
+                deleted: record.deleted,
+                blob: blob.into(),
+            });
+        }
+        let _: PushResponse = self
+            .api()?
+            .post(&format!("/v1/vaults/{vault}/changes"), &PushRequest { ops })
+            .await?;
+        // Conflicts are fine: someone else's newer write is already format 2.
+        self.pull_vault(vault).await?;
+        Ok(())
+    }
+
     /// Pulls every change after the vault's cursor. Returns the number of records received.
     pub(crate) async fn pull_vault(&mut self, vault: Uuid) -> Result<usize> {
         let mut total = 0;
@@ -95,6 +173,12 @@ impl Vessel {
                 .await?;
             total += page.changes.len();
             for record in &page.changes {
+                // A copy that fails authentication (forged, replayed, or relabeled by the
+                // server) never replaces what this device has.
+                if let Err(e @ ClientError::Crypto(_)) = self.open_entity(&vault, record) {
+                    tracing::warn!(%vault, id = %record.id, "refusing a record from the server: {e}");
+                    continue;
+                }
                 self.store.put_record(&vault, record)?;
             }
             self.store.set_cursor(&vault, page.next_seq)?;
@@ -128,8 +212,13 @@ impl Vessel {
             let mut ops = Vec::with_capacity(queue.len());
             for p in &queue {
                 let payload: PendingPayload = self.open_local(&p.payload)?;
-                let (key_version, blob) =
-                    self.seal_entity(&vault, &p.id, payload.entity.as_ref())?;
+                let (key_version, blob) = self.seal_entity(
+                    &vault,
+                    &p.id,
+                    payload.entity.as_ref(),
+                    p.base_version,
+                    p.deleted,
+                )?;
                 ops.push(PushOp {
                     id: p.id,
                     base_version: p.base_version,

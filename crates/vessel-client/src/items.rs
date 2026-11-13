@@ -3,7 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use vessel_crypto::envelope::{RecordContext, open_record, seal_record};
+use vessel_crypto::envelope::{
+    FORMAT_V1, RecordContext, Revision, format_version, open_record, seal_record,
+};
 use vessel_crypto::wrap::{WrapPurpose, open_bytes, seal_bytes};
 use vessel_model::{Entity, EntityKind, FieldConflict};
 use vessel_protocol::RecordDto;
@@ -45,23 +47,47 @@ pub(crate) struct ConflictPayload {
     pub conflicts: Vec<FieldConflict>,
 }
 
-fn ctx(vault: &Uuid, id: &Uuid, key_version: u32) -> RecordContext {
+fn ctx(vault: &Uuid, id: &Uuid, key_version: u32, version: u64, deleted: bool) -> RecordContext {
     RecordContext {
         vault_id: *vault.as_bytes(),
         record_id: *id.as_bytes(),
         key_version,
+        revision: Some(Revision { version, deleted }),
     }
 }
 
+/// Local key: vaults whose records this device has seen entirely in envelope format 2. From
+/// then on a format 1 envelope there is a server replaying an old copy, and is refused.
+pub(crate) const V2_VAULTS_KEY: &str = "v2_vaults";
+
 impl Vessel {
+    pub(crate) fn v2_vaults(&self) -> Result<std::collections::BTreeSet<Uuid>> {
+        Ok(self.store.get(V2_VAULTS_KEY)?.unwrap_or_default())
+    }
+
     pub(crate) fn open_entity(&self, vault: &Uuid, record: &RecordDto) -> Result<Option<Entity>> {
+        let legacy = format_version(record.blob.as_slice()) == Some(FORMAT_V1);
+        if legacy && self.v2_vaults()?.contains(vault) {
+            return Err(vessel_crypto::CryptoError::Malformed(
+                "an old-format copy of a record in a vault already upgraded (a replayed copy?)",
+            )
+            .into());
+        }
         if record.deleted {
+            // Format 2 deletions are authenticated: the server cannot fake one.
+            if !legacy && let Ok(key) = self.vault_key(vault, record.key_version) {
+                open_record(
+                    key,
+                    &ctx(vault, &record.id, record.key_version, record.version, true),
+                    record.blob.as_slice(),
+                )?;
+            }
             return Ok(None);
         }
         let key = self.vault_key(vault, record.key_version)?;
         let plain = open_record(
             key,
-            &ctx(vault, &record.id, record.key_version),
+            &ctx(vault, &record.id, record.key_version, record.version, false),
             record.blob.as_slice(),
         )?;
         if plain.as_slice() == b"null" {
@@ -70,17 +96,25 @@ impl Vessel {
         Ok(Some(Entity::from_json(&plain)?))
     }
 
+    /// Seals the next version of a record: `base_version + 1`, the version the server gives a
+    /// write based on `base_version`.
     pub(crate) fn seal_entity(
         &self,
         vault: &Uuid,
         id: &Uuid,
         entity: Option<&Entity>,
+        base_version: u64,
+        deleted: bool,
     ) -> Result<(u32, Vec<u8>)> {
         let kv = self.write_key_version(vault)?;
         let json = entity.map_or_else(|| b"null".to_vec(), Entity::to_json);
         Ok((
             kv,
-            seal_record(self.vault_key(vault, kv)?, &ctx(vault, id, kv), &json)?,
+            seal_record(
+                self.vault_key(vault, kv)?,
+                &ctx(vault, id, kv, base_version + 1, deleted),
+                &json,
+            )?,
         ))
     }
 

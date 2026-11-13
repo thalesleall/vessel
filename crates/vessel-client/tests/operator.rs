@@ -147,3 +147,21 @@ async fn an_on_disk_agent_syncs_between_devices() {
     assert!(pc2.items(None).unwrap().iter().any(|i| matches!(&i.entity, Entity::Host(h) if h.label == "on-disk")));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Edits not yet sent to a vault that disappears are kept in the personal vault.
+#[tokio::test]
+async fn unsent_edits_of_a_deleted_vault_are_kept() {
+    let url = agent_with(|_| {}).await;
+    let mut owner = signup(&url, "owner@example.com").await;
+    let mut bob = signup(&url, "bob@example.com").await;
+    let vault = share(&mut owner, &mut bob, "Time", Role::Editor).await;
+    bob.save(vault, None, host("unsent")).unwrap();
+    owner.delete_vault(vault).await.unwrap();
+
+    let report = bob.sync().await.unwrap();
+    assert_eq!(report.rescued, 1);
+    let personal = bob.personal_vault().unwrap();
+    assert!(bob.items(None).unwrap().iter().any(
+        |i| i.vault_id == personal && matches!(&i.entity, Entity::Host(h) if h.label == "unsent")
+    ));
+}

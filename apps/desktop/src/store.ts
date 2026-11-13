@@ -1,6 +1,6 @@
 import { createMemo, createSignal } from "solid-js";
 import { transition } from "./motion";
-import { api, errorMessage, on, type Item, type Kind, type SessionInfo, type Settings, type Status, type VaultView } from "./api";
+import { api, errorMessage, on, type Item, type Kind, type SessionInfo, type Settings, type Status, type SyncReport, type VaultView } from "./api";
 
 // ---------------------------------------------------------------------------------------------
 // App-wide state
@@ -92,9 +92,10 @@ export function wireEvents() {
   wired = true;
   on("vessel://changed", () => refreshData());
   on<boolean>("vessel://syncing", (v) => setSyncing(v));
-  on("vessel://synced", () => {
+  on<SyncReport>("vessel://synced", (r) => {
     setSyncError(null);
     setLastSync(Date.now());
+    if (r?.rescued) toast(`${r.rescued} alteração(ões) de um cofre que deixou de existir foram guardadas no seu cofre pessoal.`, "info");
   });
   on<{ message: string }>("vessel://sync-error", (e) => setSyncError(e.message));
   on<string>("vessel://signed-out", async (message) => {

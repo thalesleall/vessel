@@ -7,6 +7,7 @@ fn ctx() -> RecordContext {
         vault_id: [1; 16],
         record_id: [2; 16],
         key_version: 1,
+        revision: None,
     }
 }
 
@@ -90,10 +91,10 @@ fn record_detects_tampering_anywhere() {
 fn record_rejects_unknown_header() {
     let vk = SymmetricKey::generate().unwrap();
     let mut envelope = seal_record(&vk, &ctx(), b"secret").unwrap();
-    envelope[0] = 2;
+    envelope[0] = 3;
     assert_eq!(
         open_record(&vk, &ctx(), &envelope).unwrap_err(),
-        CryptoError::UnsupportedVersion(2)
+        CryptoError::UnsupportedVersion(3)
     );
     envelope[0] = 1;
     envelope[1] = 7;
@@ -130,4 +131,23 @@ fn debug_output_redacts_keys() {
     let key = SymmetricKey::from_bytes([0xAB; 32]);
     let shown = format!("{key:?}");
     assert!(!shown.to_lowercase().contains("ab"), "{shown}");
+}
+
+#[test]
+fn format_2_binds_the_record_version_and_deletion() {
+    use vessel_crypto::envelope::{FORMAT_V2, Revision, format_version};
+    let vk = SymmetricKey::generate().unwrap();
+    let at = |version, deleted| RecordContext {
+        revision: Some(Revision { version, deleted }),
+        ..ctx()
+    };
+    let envelope = seal_record(&vk, &at(3, false), b"host").unwrap();
+    assert_eq!(format_version(&envelope), Some(FORMAT_V2));
+    assert_eq!(*open_record(&vk, &at(3, false), &envelope).unwrap(), b"host");
+    // Served as a newer version, or as a deletion: refused.
+    for wrong in [at(4, false), at(3, true)] {
+        assert_eq!(open_record(&vk, &wrong, &envelope).unwrap_err(), CryptoError::Decrypt);
+    }
+    // Opening a format 2 envelope without a revision is an error, not a downgrade.
+    assert!(open_record(&vk, &ctx(), &envelope).is_err());
 }
