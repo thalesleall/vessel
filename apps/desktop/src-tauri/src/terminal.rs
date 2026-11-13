@@ -26,6 +26,8 @@ pub enum SessionKind {
     Local {
         profile_id: Option<Uuid>,
         shell: String,
+        /// Which shell, for the UI's icon.
+        shell_kind: vessel_client::model::Shell,
     },
     Ssh {
         host_id: Uuid,

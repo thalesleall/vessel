@@ -2,7 +2,7 @@ import { For, Show, createResource, createSignal } from "solid-js";
 import { api, blank, shellLabel, type Item, type Shell, type TerminalProfile } from "../api";
 import { itemsOf } from "../store";
 import { openProfile, openShell } from "../terminal";
-import { Button, Empty, Field, Icon, Modal, colorFor } from "../ui";
+import { Button, Empty, Field, Icon, Modal, ShellIcon } from "../ui";
 import { EditorFooter, VaultSelect, defaultVault, removeItem, saveEntity } from "./common";
 
 type ProfileItem = Item<{ type: "terminal_profile"; data: TerminalProfile }>;
@@ -19,17 +19,17 @@ export function ProfilesView() {
         <div class="spacer" />
         <Button variant="primary" icon="plus" onClick={() => setEditing("new")}>Novo perfil</Button>
       </div>
-      <p class="subtitle">Perfis sincronizam entre seus computadores; o terminal sempre roda na mÃ¡quina em que vocÃª estÃ¡.</p>
+      <p class="subtitle">Perfis sincronizam entre seus computadores; o terminal sempre roda na máquina em que você está.</p>
 
       <Show when={profiles().length > 0} fallback={<Empty icon="terminal" title="Nenhum perfil"><span>Crie um perfil a partir dos shells detectados abaixo.</span></Empty>}>
         <div class="grid">
           <For each={profiles()}>
             {(p) => (
               <div class="card" onClick={() => openProfile(p.id)}>
-                <div class="avatar" style={{ background: p.entity.data.color || colorFor(shellLabel(p.entity.data.shell)) }}><Icon name="terminal" size={18} /></div>
+                <ShellIcon shell={p.entity.data.shell} color={p.entity.data.color} size={38} />
                 <div class="meta">
                   <div class="name">{p.entity.data.label}</div>
-                  <div class="sub">{shellLabel(p.entity.data.shell)}{p.entity.data.cwd ? ` Â· ${p.entity.data.cwd}` : ""}</div>
+                  <div class="sub">{shellLabel(p.entity.data.shell)}{p.entity.data.cwd ? ` · ${p.entity.data.cwd}` : ""}</div>
                 </div>
                 <div class="actions" onClick={(e) => e.stopPropagation()}>
                   <button class="icon-btn" title="Editar" onClick={() => setEditing(p)}><Icon name="edit" size={15} /></button>
@@ -46,7 +46,7 @@ export function ProfilesView() {
           <For each={shells() ?? []}>
             {(s) => (
               <div class="row">
-                <Icon name="terminal" />
+                <ShellIcon shell={s.shell} size={26} />
                 <div class="meta"><div class="name">{s.label}</div><div class="sub mono">{s.program}</div></div>
                 <Button small icon="play" onClick={() => openShell(s.shell)}>Abrir</Button>
               </div>
@@ -109,8 +109,8 @@ function ProfileEditor(props: { item: ProfileItem | null; shells: Shell[]; onClo
             onInput={(e) => setD({ ...d(), shell: { kind: "custom", program: e.currentTarget.value } })} placeholder="C:\\caminho\\programa.exe" /></Field>
         </Show>
         <Field label="Argumentos"><input class="mono" value={args()} onInput={(e) => setArgs(e.currentTarget.value)} /></Field>
-        <Field label="Pasta inicial" hint="Vazio = sua pasta de usuÃ¡rio."><input class="mono" value={d().cwd} onInput={(e) => setD({ ...d(), cwd: e.currentTarget.value })} /></Field>
-        <Field label="VariÃ¡veis de ambiente" hint="Uma por linha: NOME=valor"><textarea value={env()} onInput={(e) => setEnv(e.currentTarget.value)} /></Field>
+        <Field label="Pasta inicial" hint="Vazio = sua pasta de usuário."><input class="mono" value={d().cwd} onInput={(e) => setD({ ...d(), cwd: e.currentTarget.value })} /></Field>
+        <Field label="Variáveis de ambiente" hint="Uma por linha: NOME=valor"><textarea value={env()} onInput={(e) => setEnv(e.currentTarget.value)} /></Field>
         <Field label="Cofre"><VaultSelect value={vault()} onChange={setVault} /></Field>
       </div>
     </Modal>

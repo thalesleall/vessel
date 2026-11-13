@@ -146,7 +146,7 @@ export interface ConflictView {
 export interface SessionInfo {
   id: Uuid;
   title: string;
-  kind: { kind: "local"; profile_id: Uuid | null; shell: string } | { kind: "ssh"; host_id: Uuid; address: string };
+  kind: { kind: "local"; profile_id: Uuid | null; shell: string; shell_kind?: Shell } | { kind: "ssh"; host_id: Uuid; address: string };
   alive: boolean;
   created_at: number;
   by_agent: boolean;

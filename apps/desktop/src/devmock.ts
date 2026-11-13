@@ -37,7 +37,7 @@ const items = [
 ];
 
 const sessions = [
-  { id: id(90), title: "PowerShell", kind: { kind: "local", profile_id: id(50), shell: "PowerShell" }, alive: true, created_at: 1, by_agent: false },
+  { id: id(90), title: "PowerShell", kind: { kind: "local", profile_id: id(50), shell: "PowerShell", shell_kind: { kind: "pwsh" } }, alive: true, created_at: 1, by_agent: false },
   { id: id(91), title: "api-prod-01", kind: { kind: "ssh", host_id: id(1), address: "deploy@10.0.1.11:22" }, alive: true, created_at: 2, by_agent: true },
 ];
 
@@ -69,6 +69,9 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     { label: "PowerShell", shell: { kind: "pwsh" }, program: "C:\\Program Files\\PowerShell\\7\\pwsh.exe" },
     { label: "Prompt de Comando", shell: { kind: "cmd" }, program: "C:\\Windows\\System32\\cmd.exe" },
     { label: "Ubuntu-24.04", shell: { kind: "wsl", distro: "Ubuntu-24.04" }, program: "C:\\Windows\\System32\\wsl.exe" },
+    { label: "Debian", shell: { kind: "wsl", distro: "Debian" }, program: "C:\\Windows\\System32\\wsl.exe" },
+    { label: "Windows PowerShell", shell: { kind: "windows_powershell" }, program: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" },
+    { label: "Git Bash", shell: { kind: "git_bash" }, program: "C:\\Program Files\\Git\\bin\\bash.exe" },
   ],
   devices: () => [
     { id: id(101), name: "DESKTOP-ANA", created_at: 0, last_seen_at: Math.floor(Date.now() / 1000), current: true },

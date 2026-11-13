@@ -47,6 +47,54 @@ export function Icon(props: { name: string; size?: number; class?: string }) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Shell badges: a colored tile with a glyph per shell type (and per WSL distro)
+// ---------------------------------------------------------------------------------------------
+
+type ShellLike = { kind: string; distro?: string } | null | undefined;
+
+const distroColors: [RegExp, string][] = [
+  [/ubuntu/i, "#e95420"],
+  [/debian/i, "#a81d33"],
+  [/kali/i, "#367bf0"],
+  [/arch/i, "#1793d1"],
+  [/fedora/i, "#3c6eb4"],
+  [/alpine/i, "#0d597f"],
+  [/suse/i, "#5a9a20"],
+  [/oracle/i, "#c74634"],
+  [/alma|rocky|centos|rhel|red ?hat/i, "#b0272d"],
+];
+
+function badgeFor(shell: ShellLike, ssh: boolean): { bg: string; glyph?: string; icon?: string; title: string } {
+  if (ssh) return { bg: "#14806b", icon: "server", title: "SSH" };
+  switch (shell?.kind) {
+    case "pwsh": return { bg: "#2f6fd6", glyph: ">_", title: "PowerShell" };
+    case "windows_powershell": return { bg: "#123f7a", glyph: ">_", title: "Windows PowerShell" };
+    case "cmd": return { bg: "#30343c", glyph: "C:\\", title: "Prompt de Comando" };
+    case "git_bash": return { bg: "#e0502e", glyph: "git", title: "Git Bash" };
+    case "wsl": {
+      const d = shell.distro ?? "";
+      const bg = distroColors.find(([re]) => re.test(d))?.[1] ?? "#3d8c40";
+      return { bg, glyph: "$_", title: `WSL · ${d}` };
+    }
+    default: return { bg: "#6b4fd8", icon: "terminal", title: "Terminal" };
+  }
+}
+
+/** Colored tile identifying a shell type (or SSH). */
+export function ShellIcon(props: { shell?: ShellLike; ssh?: boolean; size?: number; color?: string }) {
+  const size = () => props.size ?? 18;
+  const b = () => badgeFor(props.shell, !!props.ssh);
+  return (
+    <span class="shell-icon" title={b().title}
+      style={{ width: `${size()}px`, height: `${size()}px`, background: props.color || b().bg, "border-radius": `${Math.round(size() * 0.26)}px` }}>
+      <Show when={b().glyph} fallback={<Icon name={b().icon ?? "terminal"} size={Math.round(size() * 0.66)} />}>
+        <span class="glyph" style={{ "font-size": `${Math.max(7, Math.round(size() * (b().glyph!.length > 2 ? 0.4 : 0.5)))}px` }}>{b().glyph}</span>
+      </Show>
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------------------------
 

@@ -1,11 +1,11 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
 import { api, shellLabel } from "./api";
 import {
   activeTab, itemsOf, lastSync, section, sessions, setActiveTab, setSection, setStatus, settings, status, syncError, syncing,
   refreshSessions, type Section,
 } from "./store";
 import { HostKeyPrompt, TerminalView, connectHost, openProfile } from "./terminal";
-import { Icon, colorFor, initials } from "./ui";
+import { Icon, ShellIcon, colorFor, initials } from "./ui";
 import { HostsView } from "./views/hosts";
 import { ProfilesView } from "./views/profiles";
 import { KeychainView } from "./views/keychain";
@@ -94,7 +94,7 @@ function TabBar() {
         {(s) => (
           <div class="tab" classList={{ active: activeTab() === s.id }} onClick={() => setActiveTab(s.id)} role="tab">
             <span class="state" classList={{ dead: !s.alive }} />
-            <Icon name={s.kind.kind === "ssh" ? "server" : "terminal"} size={14} />
+            <ShellIcon ssh={s.kind.kind === "ssh"} shell={s.kind.kind === "local" ? s.kind.shell_kind : null} size={16} />
             <span class="title" title={s.kind.kind === "ssh" ? s.kind.address : s.kind.shell}>{s.title}</span>
             <Show when={s.by_agent}><span class="agent-flag" title="Aberto por um agente de IA">IA</span></Show>
             <button class="close" onClick={(e) => close(s.id, e)} title="Fechar"><Icon name="x" size={13} /></button>
@@ -111,14 +111,14 @@ function Palette(props: { onClose: () => void }) {
   const [sel, setSel] = createSignal(0);
   const hosts = itemsOf("host");
   const profiles = itemsOf("terminal_profile");
-  type Entry = { label: string; hint: string; icon: string; run: () => void };
+  type Entry = { label: string; hint: string; icon: string; badge?: () => JSX.Element; run: () => void };
   const entries = createMemo<Entry[]>(() => {
     const q = query().toLowerCase();
     const all: Entry[] = [
       ...hosts().map((h) => ({
-        label: h.entity.data.label || h.entity.data.address, hint: h.entity.data.address, icon: "server", run: () => connectHost(h.id),
+        label: h.entity.data.label || h.entity.data.address, hint: h.entity.data.address, icon: "server", badge: () => <ShellIcon ssh size={18} />, run: () => connectHost(h.id),
       })),
-      ...profiles().map((p) => ({ label: p.entity.data.label, hint: shellLabel(p.entity.data.shell), icon: "terminal", run: () => openProfile(p.id) })),
+      ...profiles().map((p) => ({ label: p.entity.data.label, hint: shellLabel(p.entity.data.shell), icon: "terminal", badge: () => <ShellIcon shell={p.entity.data.shell} size={18} />, run: () => openProfile(p.id) })),
       ...nav.map((n) => ({ label: n.label, hint: "ir para", icon: n.icon, run: () => { setSection(n.id); setActiveTab("home"); } })),
     ];
     return (q ? all.filter((e) => `${e.label} ${e.hint}`.toLowerCase().includes(q)) : all).slice(0, 40);
@@ -143,7 +143,7 @@ function Palette(props: { onClose: () => void }) {
           <For each={entries()}>
             {(e, i) => (
               <div class="palette-item" classList={{ sel: i() === sel() }} onMouseEnter={() => setSel(i())} onClick={() => run(e)}>
-                <Icon name={e.icon} size={16} /><span>{e.label}</span><span class="hint">{e.hint}</span>
+                {e.badge ? e.badge() : <Icon name={e.icon} size={16} />}<span>{e.label}</span><span class="hint">{e.hint}</span>
               </div>
             )}
           </For>

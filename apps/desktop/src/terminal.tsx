@@ -94,16 +94,16 @@ export function HostKeyPrompt() {
               </>}>
           <div class="form">
             <Show when={q().changed} fallback={
-              <p class="confirm-text">Ã‰ a primeira conexÃ£o com <b>{q().host}</b>. Compare a impressÃ£o digital abaixo com a do servidor
-                (<span class="mono">ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</span>) antes de confiar. Ela serÃ¡ salva e sincronizada.</p>
+              <p class="confirm-text">É a primeira conexão com <b>{q().host}</b>. Compare a impressão digital abaixo com a do servidor
+                (<span class="mono">ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</span>) antes de confiar. Ela será salva e sincronizada.</p>
             }>
               <div class="callout callout-danger"><Icon name="alert" />
-                <span>A identidade de <b>{q().host}</b> nÃ£o Ã© a que vocÃª salvou. Pode ser uma reinstalaÃ§Ã£o, ou alguÃ©m interceptando a conexÃ£o.
-                  Se a mudanÃ§a for esperada, apague o host conhecido em Chaves â†’ Hosts conhecidos e conecte de novo.</span>
+                <span>A identidade de <b>{q().host}</b> não é a que você salvou. Pode ser uma reinstalação, ou alguém interceptando a conexão.
+                  Se a mudança for esperada, apague o host conhecido em Chaves → Hosts conhecidos e conecte de novo.</span>
               </div>
               <div class="field"><span class="field-label">Esperada</span><div class="code-block">{q().expected}</div></div>
             </Show>
-            <div class="field"><span class="field-label">{q().changed ? "Recebida" : `ImpressÃ£o digital (${q().keyType})`}</span>
+            <div class="field"><span class="field-label">{q().changed ? "Recebida" : `Impressão digital (${q().keyType})`}</span>
               <div class="code-block">{q().fingerprint}</div></div>
           </div>
         </Modal>
@@ -220,7 +220,7 @@ export function TerminalView(props: { id: string }) {
     <div class="term-wrap" classList={{ visible: visible() }}>
       <Show when={!session().alive}>
         <div class="term-banner">
-          <span>SessÃ£o encerrada</span>
+          <span>Sessão encerrada</span>
           <Show when={session().kind.kind === "ssh"}>
             <Button small icon="sync" onClick={() => { const k = session().kind; if (k.kind === "ssh") connectHost(k.host_id); }}>Reconectar</Button>
           </Show>

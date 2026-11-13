@@ -92,6 +92,7 @@ pub async fn open_local(
         SessionKind::Local {
             profile_id,
             shell: shell_label(&profile.shell),
+            shell_kind: profile.shell.clone(),
         },
         by_agent,
     );
