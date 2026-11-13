@@ -258,6 +258,12 @@ MembershipEvent { vault_id, seq, prev_hash, action, subject_user_id, role, actor
 
 Os clientes validam a cadeia desde a criação do cofre. Um servidor que injete um membro falso é detectado, porque não consegue assinar o evento.
 
+Além disso, cada cliente guarda uma **âncora** do que já verificou: o tamanho da cadeia, o hash da cabeça e o criador. Uma cadeia nova só é aceita se **estender** a anterior. Assim, o servidor não consegue desfazer uma remoção servindo um prefixo, nem trocar o histórico por outro criado por uma conta dele.
+
+Regras de papel:
+- só o dono adiciona ou promove admins;
+- um evento `Add` não pode ter papel maior que o do convite aceito.
+
 ### 7.4 Verificação de chave pública
 
 - Impressão digital = os primeiros 20 bytes de `SHA-256(UXK_pub || USK_pub)`, mostrados como 5 grupos de palavras ou números.
@@ -272,6 +278,11 @@ Quando alguém é removido de um cofre, ou um dispositivo é revogado por suspei
 2. O app do admin gera `VK` nova (`key_version + 1`), cria grants para os membros restantes e recifra todos os registros do cofre em lote.
 3. Enquanto isso, o cofre fica marcado como `rotating`: as escritas novas já usam a versão nova, e as leituras aceitam as duas.
 4. Concluída a rotação, os grants antigos são apagados.
+
+Garantias que valem mesmo se o app fechar no meio:
+- **Remoções marcam o cofre:** toda remoção, inclusive alguém saindo por conta própria, marca o cofre com `rotation_due`. A marca só sai quando começa uma rotação nova, e a sincronização de qualquer gerente faz essa rotação.
+- **Rotação em andamento é substituída:** a chave de uma rotação em andamento foi entregue a quem era membro quando ela começou. Por isso, ela é concluída e logo substituída por outra.
+- **A versão da chave nunca recua:** o cliente nunca escreve com uma versão de chave menor que a mais nova que já verificou, mesmo que o servidor informe outra.
 
 ---
 
@@ -552,7 +563,7 @@ O app desktop embute um servidor **MCP** (Model Context Protocol) para que agent
 - **Gravar credenciais:** qualquer `create_item` ou `update_item` que contenha esses campos é recusado. Em edições, os segredos existentes são preservados.
 - **Alterar identidades, chaves SSH e hosts conhecidos:** são só leitura para agentes. Os dois primeiros são credenciais, e o terceiro decide em quais servidores confiar. Agentes podem referenciá-los por id ao criar hosts.
 - **Gestão de conta e de time:** senha, chave de recuperação, dispositivos, convites, aprovação de membros e rotação de chave ficam de fora.
-- **Aceitar uma chave de host *alterada*:** é sempre recusado. Uma chave *nova* só é aceita com `trust_new_host_key: true`, e as instruções do servidor pedem que o agente confirme isso com o usuário.
+- **Aceitar chaves de host:** agentes nunca aceitam uma chave nova nem alterada. Só conectam a servidores cuja chave o usuário já confirmou no app. Sem isso, um agente poderia apontar um host que tem senha salva para um servidor dele e receber a senha.
 
 Limitação conhecida: um agente com permissão de digitar no terminal pode rodar comandos que leiam arquivos de credenciais *no servidor remoto* (ex.: `cat ~/.ssh/id_rsa`). A proteção do Vessel cobre os segredos guardados no cofre, não o que o terminal remoto expõe. Desligue "permitir digitar nos terminais" quando isso importar.
 
