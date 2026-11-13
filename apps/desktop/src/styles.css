@@ -256,3 +256,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius
 .activity:first-child { border-top: 0; }
 .activity .tool { font-family: var(--mono); color: #b9a8ff; min-width: 150px; }
 .activity .when { color: var(--text-faint); margin-left: auto; white-space: nowrap; }
+.activity .body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.activity .summary { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity .reason { display: inline-flex; align-items: center; gap: 5px; color: var(--red); font-size: 12px; cursor: help; }
+.activity.failed .tool { color: var(--red); }

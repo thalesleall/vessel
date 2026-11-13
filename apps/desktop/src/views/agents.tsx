@@ -114,9 +114,14 @@ export function AgentsView() {
               <Show when={activity().length} fallback={<div class="row"><span class="sub">Nenhuma ação ainda.</span></div>}>
                 <For each={activity()}>
                   {(a) => (
-                    <div class="activity">
+                    <div class="activity" classList={{ failed: !a.ok }}>
                       <span class="tool">{a.tool}</span>
-                      <span class="mono" style={{ color: a.ok ? "var(--text-dim)" : "var(--red)", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{a.summary}</span>
+                      <div class="body">
+                        <Show when={a.summary}><span class="summary mono" title={a.summary}>{a.summary}</span></Show>
+                        <Show when={!a.ok}>
+                          <span class="reason" title={a.error ?? ""}><Icon name="x" size={12} />{a.reason ?? "Falhou"}</span>
+                        </Show>
+                      </div>
                       <span class="when">{timeAgo(a.at)}</span>
                     </div>
                   )}

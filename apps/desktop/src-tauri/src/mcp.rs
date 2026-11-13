@@ -226,9 +226,9 @@ async fn dispatch(state: &AppState, msg: Value) -> Option<Value> {
                 .unwrap_or_else(|| json!({}));
             let started = Instant::now();
             let outcome = call_tool(state, &name, &args).await;
-            let summary = summarize(&name, &args);
+            let summary = summarize(&args);
             tracing::info!(tool = %name, ok = outcome.is_ok(), ms = started.elapsed().as_millis() as u64, "MCP tool call");
-            state.log_activity(&name, summary, outcome.is_ok());
+            state.log_activity(&name, summary, outcome.as_ref().err().map(String::as_str));
             match outcome {
                 Ok(value) => json!({
                     "content": [{ "type": "text", "text": serde_json::to_string_pretty(&value).unwrap_or_default() }],
@@ -260,7 +260,7 @@ and cannot be set: reference existing identities and SSH keys by id (list_items 
 terminal_run for commands whose output you need; it waits until the output settles. Ask the user before running \
 destructive commands on remote servers.";
 
-fn summarize(name: &str, args: &Value) -> String {
+fn summarize(args: &Value) -> String {
     let pick = |k: &str| {
         args.get(k).and_then(|v| {
             v.as_str()
@@ -285,11 +285,44 @@ fn summarize(name: &str, args: &Value) -> String {
             parts.push(format!("{key}={v}"));
         }
     }
-    if parts.is_empty() {
-        name.to_string()
+    parts.join(" ")
+}
+
+/// A short Portuguese explanation of a tool error, for the activity list.
+pub fn failure_reason(message: &str) -> String {
+    let m = message.to_ascii_lowercase();
+    let reason = if m.contains("is locked") {
+        "Vessel bloqueado"
+    } else if m.contains("editing items is disabled") {
+        "Edição desligada para agentes"
+    } else if m.contains("typing into terminals is disabled")
+        || m.contains("with typing disabled")
+        || m.contains("running commands is disabled")
+    {
+        "Digitação/execução desligada para agentes"
+    } else if m.contains("is a credential") {
+        "Credenciais são proibidas para agentes"
+    } else if m.contains("agents cannot") || m.contains("can only be edited by the user") {
+        "Só você pode alterar esse tipo de item"
+    } else if m.contains("host key")
+        || m.contains("impressão digital")
+        || m.contains("chave do servidor")
+    {
+        "Chave do servidor precisa de confirmação"
+    } else if m.contains("autenticação recusada") {
+        "Autenticação SSH recusada"
+    } else if m.contains("not found") || m.contains("no such") {
+        "Não encontrado"
     } else {
-        parts.join(" ")
-    }
+        return message
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(140)
+            .collect();
+    };
+    reason.to_string()
 }
 
 // -------------------------------------------------------------------------------------------------

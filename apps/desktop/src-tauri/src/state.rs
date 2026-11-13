@@ -47,6 +47,10 @@ pub struct Activity {
     pub tool: String,
     pub summary: String,
     pub ok: bool,
+    /// Why it failed, short and in Portuguese, for the activity list.
+    pub reason: Option<String>,
+    /// The full error message the agent received.
+    pub error: Option<String>,
 }
 
 #[derive(Clone)]
@@ -87,12 +91,14 @@ impl AppState {
         self.sync_now.notify_one();
     }
 
-    pub fn log_activity(&self, tool: &str, summary: String, ok: bool) {
+    pub fn log_activity(&self, tool: &str, summary: String, error: Option<&str>) {
         let entry = Activity {
             at: now(),
             tool: tool.into(),
             summary,
-            ok,
+            ok: error.is_none(),
+            reason: error.map(crate::mcp::failure_reason),
+            error: error.map(|e| e.chars().take(500).collect()),
         };
         {
             let mut a = self.activity.lock().unwrap_or_else(|e| e.into_inner());

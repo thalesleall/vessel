@@ -78,10 +78,10 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   forwards: () => [{ rule_id: id(60), label: "Postgres prod", description: "", running: true, error: null }],
   mcp_status: () => ({ enabled: true, running: true, url: "http://127.0.0.1:47011/mcp", token: "vsl_9fK2mQ7xZpL0aB3cD5eF7gH9iJ1kL3mN5oP7qR9sT1u", allow_terminal_input: true, allow_writes: true, error: null, bridge_path: "C:\\Program Files\\Vessel\\vessel-mcp.exe" }),
   mcp_activity: () => [
-    { at: Math.floor(Date.now() / 1000) - 40, tool: "terminal_run", summary: "session_id=… command=df -h", ok: true },
-    { at: Math.floor(Date.now() / 1000) - 95, tool: "connect_ssh", summary: "host_id=api-prod-01", ok: true },
-    { at: Math.floor(Date.now() / 1000) - 300, tool: "create_item", summary: "kind=host", ok: true },
-    { at: Math.floor(Date.now() / 1000) - 320, tool: "create_item", summary: "kind=identity", ok: false },
+    { at: Math.floor(Date.now() / 1000) - 40, tool: "terminal_run", summary: "session_id=… command=df -h", ok: true, reason: null, error: null },
+    { at: Math.floor(Date.now() / 1000) - 95, tool: "connect_ssh", summary: "host_id=api-prod-01", ok: true, reason: null, error: null },
+    { at: Math.floor(Date.now() / 1000) - 300, tool: "create_item", summary: "kind=host", ok: true, reason: null, error: null },
+    { at: Math.floor(Date.now() / 1000) - 320, tool: "create_item", summary: "kind=identity", ok: false, reason: "Só você pode alterar esse tipo de item", error: "agents cannot create identity items" },
   ],
   attach: (a) => {
     const channel = a.onData as { id: number };

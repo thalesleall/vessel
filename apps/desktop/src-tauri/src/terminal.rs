@@ -141,10 +141,71 @@ impl Session {
 
 /// Plain text of terminal output: ANSI sequences removed, line endings normalized.
 pub fn to_plain_text(bytes: &[u8]) -> String {
-    let stripped = strip_ansi_escapes::strip(bytes);
+    let stripped = strip_ansi_escapes::strip(row_moves_to_newlines(bytes));
     String::from_utf8_lossy(&stripped)
         .replace("\r\n", "\n")
         .replace('\r', "\n")
+}
+
+/// ConPTY often moves to the next line with a cursor-position sequence (`ESC[row;colH`)
+/// instead of CR LF. For plain text, turn every move to a different row into a newline.
+fn row_moves_to_newlines(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut row: Option<u32> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == 0x1b && bytes.get(i + 1) == Some(&b'[') {
+            let mut j = i + 2;
+            while j < bytes.len() && (0x30..=0x3f).contains(&bytes[j]) {
+                j += 1;
+            }
+            if let Some(&fin) = bytes.get(j) {
+                let params = std::str::from_utf8(&bytes[i + 2..j]).unwrap_or("");
+                let first = params
+                    .split(';')
+                    .next()
+                    .and_then(|p| p.parse::<u32>().ok())
+                    .unwrap_or(1);
+                let new_row = match fin {
+                    b'H' | b'f' | b'd' => Some(first),
+                    b'E' => Some(row.unwrap_or(1) + first.max(1)),
+                    _ => None,
+                };
+                if let Some(r) = new_row {
+                    if row.is_some_and(|old| old != r) {
+                        out.push(b'\n');
+                    }
+                    row = Some(r);
+                    i = j + 1;
+                    continue;
+                }
+                out.extend_from_slice(&bytes[i..=j]);
+                i = j + 1;
+                continue;
+            }
+        }
+        if bytes[i] == b'\n' {
+            row = row.map(|r| r + 1);
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    out
+}
+
+#[cfg(test)]
+mod plain_text_tests {
+    use super::to_plain_text;
+
+    #[test]
+    fn cursor_moves_to_another_row_become_newlines() {
+        let conpty = b"\x1b[1;1Hciclo 1 do agente\x1b[2;1HC:\\Users\\ana>\x1b[2;17H";
+        assert_eq!(
+            to_plain_text(conpty),
+            "ciclo 1 do agente\nC:\\Users\\ana>"
+        );
+        assert_eq!(to_plain_text(b"a\r\nb\x1b[32mc\x1b[0m"), "a\nbc");
+    }
 }
 
 /// The other half of a session, held by the backend that runs it.

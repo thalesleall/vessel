@@ -165,7 +165,7 @@ export interface McpInfo {
   error: string | null;
   bridge_path: string | null;
 }
-export interface Activity { at: number; tool: string; summary: string; ok: boolean }
+export interface Activity { at: number; tool: string; summary: string; ok: boolean; reason: string | null; error: string | null }
 
 export interface CmdError { code: string; message: string; details?: Record<string, unknown> }
 
