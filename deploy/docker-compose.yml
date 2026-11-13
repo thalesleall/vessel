@@ -1,0 +1,42 @@
+# Vessel agent + Caddy (automatic HTTPS).
+#
+#   cp .env.example .env    # set VESSEL_DOMAIN
+#   docker compose up -d
+#
+# The first account created on the server becomes its administrator.
+
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: apps/agent/Dockerfile
+    image: vessel-agent:latest
+    restart: unless-stopped
+    environment:
+      VESSEL_PUBLIC_URL: https://${VESSEL_DOMAIN}
+      VESSEL_SIGNUPS: ${VESSEL_SIGNUPS:-invite-only}
+      VESSEL_NAME: ${VESSEL_NAME:-Vessel}
+      VESSEL_TRUST_PROXY: "true"
+    volumes:
+      - vessel-data:/data
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [agent]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      VESSEL_DOMAIN: ${VESSEL_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  vessel-data:
+  caddy-data:
+  caddy-config:

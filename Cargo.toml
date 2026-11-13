@@ -1,0 +1,25 @@
+[workspace]
+resolver = "3"
+members = ["apps/agent", "apps/desktop/src-tauri", "apps/mcp-bridge", "crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "AGPL-3.0-or-later"
+rust-version = "1.90"
+
+# Argon2id, X25519 and friends are unusably slow unoptimized; optimize dependencies in dev builds.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# Row tuples from rusqlite read better inline than behind type aliases.
+type_complexity = "allow"

@@ -1,0 +1,118 @@
+import { For, Show, createResource, createSignal } from "solid-js";
+import { api, blank, shellLabel, type Item, type Shell, type TerminalProfile } from "../api";
+import { itemsOf } from "../store";
+import { openProfile, openShell } from "../terminal";
+import { Button, Empty, Field, Icon, Modal, colorFor } from "../ui";
+import { EditorFooter, VaultSelect, defaultVault, removeItem, saveEntity } from "./common";
+
+type ProfileItem = Item<{ type: "terminal_profile"; data: TerminalProfile }>;
+
+export function ProfilesView() {
+  const profiles = itemsOf("terminal_profile");
+  const [shells] = createResource(() => api.detectShells());
+  const [editing, setEditing] = createSignal<ProfileItem | "new" | null>(null);
+
+  return (
+    <>
+      <div class="page-head">
+        <h1>Terminais locais</h1>
+        <div class="spacer" />
+        <Button variant="primary" icon="plus" onClick={() => setEditing("new")}>Novo perfil</Button>
+      </div>
+      <p class="subtitle">Perfis sincronizam entre seus computadores; o terminal sempre roda na mÃ¡quina em que vocÃª estÃ¡.</p>
+
+      <Show when={profiles().length > 0} fallback={<Empty icon="terminal" title="Nenhum perfil"><span>Crie um perfil a partir dos shells detectados abaixo.</span></Empty>}>
+        <div class="grid">
+          <For each={profiles()}>
+            {(p) => (
+              <div class="card" onClick={() => openProfile(p.id)}>
+                <div class="avatar" style={{ background: p.entity.data.color || colorFor(shellLabel(p.entity.data.shell)) }}><Icon name="terminal" size={18} /></div>
+                <div class="meta">
+                  <div class="name">{p.entity.data.label}</div>
+                  <div class="sub">{shellLabel(p.entity.data.shell)}{p.entity.data.cwd ? ` Â· ${p.entity.data.cwd}` : ""}</div>
+                </div>
+                <div class="actions" onClick={(e) => e.stopPropagation()}>
+                  <button class="icon-btn" title="Editar" onClick={() => setEditing(p)}><Icon name="edit" size={15} /></button>
+                </div>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <div class="section-title">Detectados neste computador</div>
+      <div class="list">
+        <Show when={!shells.loading} fallback={<div class="row"><span class="spinner" /></div>}>
+          <For each={shells() ?? []}>
+            {(s) => (
+              <div class="row">
+                <Icon name="terminal" />
+                <div class="meta"><div class="name">{s.label}</div><div class="sub mono">{s.program}</div></div>
+                <Button small icon="play" onClick={() => openShell(s.shell)}>Abrir</Button>
+              </div>
+            )}
+          </For>
+        </Show>
+      </div>
+
+      <Show when={editing()}>
+        {(e) => <ProfileEditor item={e() === "new" ? null : (e() as ProfileItem)} shells={(shells() ?? []).map((s) => s.shell)} onClose={() => setEditing(null)} />}
+      </Show>
+    </>
+  );
+}
+
+function shellKey(s: Shell): string {
+  return s.kind === "wsl" ? `wsl:${s.distro}` : s.kind === "custom" ? "custom" : s.kind;
+}
+
+function ProfileEditor(props: { item: ProfileItem | null; shells: Shell[]; onClose: () => void }) {
+  const [d, setD] = createSignal<TerminalProfile>(props.item ? { ...props.item.entity.data } : blank.profile());
+  const [vault, setVault] = createSignal(props.item?.vault_id ?? defaultVault());
+  const [args, setArgs] = createSignal(d().args.join(" "));
+  const [env, setEnv] = createSignal(Object.entries(d().env).map(([k, v]) => `${k}=${v}`).join("\n"));
+  const options = () => {
+    const base: Shell[] = [{ kind: "pwsh" }, { kind: "windows_powershell" }, { kind: "cmd" }, { kind: "git_bash" }];
+    const all = [...base, ...props.shells.filter((s) => s.kind === "wsl")];
+    if (d().shell.kind === "wsl" && !all.some((s) => shellKey(s) === shellKey(d().shell))) all.push(d().shell);
+    return all;
+  };
+  const choose = (key: string) => {
+    if (key === "custom") setD({ ...d(), shell: { kind: "custom", program: (() => { const s = d().shell; return s.kind === "custom" ? s.program : ""; })() } });
+    else setD({ ...d(), shell: options().find((s) => shellKey(s) === key) ?? { kind: "pwsh" } });
+  };
+  const save = async () => {
+    const envMap: Record<string, string> = {};
+    for (const line of env().split("\n")) {
+      const i = line.indexOf("=");
+      if (i > 0) envMap[line.slice(0, i).trim()] = line.slice(i + 1);
+    }
+    const profile: TerminalProfile = {
+      ...d(), label: d().label.trim() || shellLabel(d().shell), args: args().split(" ").filter(Boolean), env: envMap,
+    };
+    if (await saveEntity(props.item, vault(), { type: "terminal_profile", data: profile })) props.onClose();
+  };
+  return (
+    <Modal title={props.item ? "Editar perfil" : "Novo perfil"} onClose={props.onClose}
+      footer={<EditorFooter onCancel={props.onClose} onSave={save}
+        onDelete={props.item ? async () => { await removeItem(props.item!, "o perfil"); props.onClose(); } : undefined} />}>
+      <div class="form">
+        <Field label="Nome"><input value={d().label} onInput={(e) => setD({ ...d(), label: e.currentTarget.value })} placeholder={shellLabel(d().shell)} autofocus /></Field>
+        <Field label="Shell">
+          <select value={shellKey(d().shell)} onChange={(e) => choose(e.currentTarget.value)}>
+            <For each={options()}>{(s) => <option value={shellKey(s)}>{shellLabel(s)}</option>}</For>
+            <option value="custom">Programa personalizadoâ€¦</option>
+          </select>
+        </Field>
+        <Show when={d().shell.kind === "custom"}>
+          <Field label="Programa"><input class="mono" value={d().shell.kind === "custom" ? (d().shell as { program: string }).program : ""}
+            onInput={(e) => setD({ ...d(), shell: { kind: "custom", program: e.currentTarget.value } })} placeholder="C:\\caminho\\programa.exe" /></Field>
+        </Show>
+        <Field label="Argumentos"><input class="mono" value={args()} onInput={(e) => setArgs(e.currentTarget.value)} /></Field>
+        <Field label="Pasta inicial" hint="Vazio = sua pasta de usuÃ¡rio."><input class="mono" value={d().cwd} onInput={(e) => setD({ ...d(), cwd: e.currentTarget.value })} /></Field>
+        <Field label="VariÃ¡veis de ambiente" hint="Uma por linha: NOME=valor"><textarea value={env()} onInput={(e) => setEnv(e.currentTarget.value)} /></Field>
+        <Field label="Cofre"><VaultSelect value={vault()} onChange={setVault} /></Field>
+      </div>
+    </Modal>
+  );
+}

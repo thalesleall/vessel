@@ -1,0 +1,475 @@
+//! SSH connections: credential resolution from synced entities, host-key verification against
+//! synced known hosts (trust on first use), jump-host chains, interactive shells.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use russh::client::{self, AuthResult, Handle};
+use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
+use russh::{ChannelMsg, Disconnect};
+use serde_json::json;
+use uuid::Uuid;
+use vessel_client::Vessel;
+use vessel_client::model::{Entity, EntityKind, Host, KnownHost};
+
+use crate::error::{CmdError, CmdResult};
+use crate::terminal::{Input, SessionBackend};
+
+/// Everything needed to reach one host, resolved while the vault is unlocked.
+#[derive(Clone)]
+pub struct Hop {
+    pub label: String,
+    pub address: String,
+    pub port: u16,
+    pub username: String,
+    pub password: Option<String>,
+    pub key: Option<(String, Option<String>)>,
+    pub known_fingerprint: Option<String>,
+    pub keepalive: Option<u32>,
+}
+
+impl Hop {
+    pub fn host_port(&self) -> String {
+        format!("{}:{}", self.address, self.port)
+    }
+}
+
+#[derive(Clone)]
+pub struct Plan {
+    /// First hop first; the target is last.
+    pub hops: Vec<Hop>,
+    pub startup_script: Option<String>,
+}
+
+fn find(items: &[vessel_client::Item], id: Uuid) -> Option<&Entity> {
+    items.iter().find(|i| i.id == id).map(|i| &i.entity)
+}
+
+fn hop_for(items: &[vessel_client::Item], host: &Host) -> CmdResult<Hop> {
+    // Credentials: inline values on the host win, then the host's identity, then its groups'.
+    let mut identity_id = host.identity_id;
+    let mut group = host.group_id;
+    let mut depth = 0;
+    while identity_id.is_none() && depth < 8 {
+        let Some(Entity::Group(g)) = group.and_then(|id| find(items, id)) else {
+            break;
+        };
+        identity_id = g.identity_id;
+        group = g.parent_id;
+        depth += 1;
+    }
+    let identity = identity_id.and_then(|id| match find(items, id) {
+        Some(Entity::Identity(i)) => Some(i.clone()),
+        _ => None,
+    });
+    let username = host
+        .username
+        .clone()
+        .filter(|u| !u.is_empty())
+        .or_else(|| {
+            identity
+                .as_ref()
+                .map(|i| i.username.clone())
+                .filter(|u| !u.is_empty())
+        })
+        .ok_or_else(|| {
+            CmdError::new(
+                "no_username",
+                format!("Defina um usuário para {}.", host.address),
+            )
+        })?;
+    let password = host
+        .password
+        .clone()
+        .filter(|p| !p.is_empty())
+        .or_else(|| identity.as_ref().and_then(|i| i.password.clone()));
+    let key_id = host
+        .ssh_key_id
+        .or_else(|| identity.as_ref().and_then(|i| i.ssh_key_id));
+    let key = key_id.and_then(|id| match find(items, id) {
+        Some(Entity::SshKey(k)) if !k.private_key.trim().is_empty() => {
+            Some((k.private_key.clone(), k.passphrase.clone()))
+        }
+        _ => None,
+    });
+    let port = host.effective_port();
+    let known_fingerprint = items.iter().find_map(|i| match &i.entity {
+        Entity::KnownHost(k) if k.host == format!("{}:{port}", host.address) => {
+            Some(k.fingerprint.clone())
+        }
+        _ => None,
+    });
+    Ok(Hop {
+        label: if host.label.is_empty() {
+            host.address.clone()
+        } else {
+            host.label.clone()
+        },
+        address: host.address.clone(),
+        port,
+        username,
+        password,
+        key,
+        known_fingerprint,
+        keepalive: host.keepalive_secs,
+    })
+}
+
+/// Resolves a host (and its jump chain) into a connection plan.
+pub fn plan(vessel: &Vessel, host_id: Uuid) -> CmdResult<Plan> {
+    let items = vessel.items(None)?;
+    let host = |id: Uuid| match find(&items, id) {
+        Some(Entity::Host(h)) => Ok(h.clone()),
+        _ => Err(CmdError::new("not_found", "Host não encontrado.")),
+    };
+    let target = host(host_id)?;
+    if target.address.trim().is_empty() {
+        return Err(CmdError::new("invalid", "O host não tem endereço."));
+    }
+    let startup_script = target
+        .startup_snippet_id
+        .and_then(|id| match find(&items, id) {
+            Some(Entity::Snippet(s)) => Some(s.script.clone()),
+            _ => None,
+        });
+    let mut chain = vec![target.clone()];
+    let mut next = target.jump_host_id;
+    while let Some(id) = next {
+        if chain.len() > 4 || id == host_id {
+            return Err(CmdError::new(
+                "invalid",
+                "Cadeia de jump hosts muito longa ou circular.",
+            ));
+        }
+        let jump = host(id)?;
+        next = jump.jump_host_id;
+        chain.push(jump);
+    }
+    chain.reverse();
+    let hops = chain
+        .iter()
+        .map(|h| hop_for(&items, h))
+        .collect::<CmdResult<Vec<_>>>()?;
+    Ok(Plan {
+        hops,
+        startup_script,
+    })
+}
+
+/// Host keys seen while connecting that were not known yet (to save after success).
+#[derive(Clone, Debug)]
+pub struct NewHostKey {
+    pub host: String,
+    pub key_type: String,
+    pub fingerprint: String,
+}
+
+pub struct Client {
+    host: String,
+    expected: Option<String>,
+    trust_new: bool,
+    seen: Arc<Mutex<Option<NewHostKey>>>,
+    pub remote_forwards: Arc<Mutex<HashMap<u32, (String, u16)>>>,
+}
+
+impl client::Handler for Client {
+    type Error = russh::Error;
+
+    async fn check_server_key(
+        &mut self,
+        key: &PublicKeyOrCertificate,
+    ) -> Result<bool, Self::Error> {
+        let (fingerprint, key_type) = match key {
+            PublicKeyOrCertificate::PublicKey { key, .. } => (
+                key.fingerprint(HashAlg::Sha256).to_string(),
+                key.algorithm().as_str().to_string(),
+            ),
+            PublicKeyOrCertificate::Certificate(cert) => {
+                let public = russh::keys::ssh_key::PublicKey::new(cert.public_key().clone(), "");
+                (
+                    public.fingerprint(HashAlg::Sha256).to_string(),
+                    cert.algorithm().as_str().to_string(),
+                )
+            }
+        };
+        let accepted = match &self.expected {
+            Some(expected) => *expected == fingerprint,
+            None => self.trust_new,
+        };
+        *self.seen.lock().unwrap_or_else(|e| e.into_inner()) = Some(NewHostKey {
+            host: self.host.clone(),
+            key_type,
+            fingerprint,
+        });
+        Ok(accepted)
+    }
+
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        _connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let dest = self
+            .remote_forwards
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&connected_port)
+            .cloned();
+        let Some((host, port)) = dest else {
+            return Ok(()); // dropping `reply` rejects the channel
+        };
+        reply.accept().await;
+        tokio::spawn(async move {
+            if let Ok(mut tcp) = tokio::net::TcpStream::connect((host.as_str(), port)).await {
+                let mut stream = channel.into_stream();
+                let _ = tokio::io::copy_bidirectional(&mut stream, &mut tcp).await;
+            }
+        });
+        Ok(())
+    }
+}
+
+/// A live connection: the target handle plus the jump connections it rides on.
+pub struct Connection {
+    handles: Vec<Handle<Client>>,
+    pub new_host_keys: Vec<NewHostKey>,
+    pub remote_forwards: Arc<Mutex<HashMap<u32, (String, u16)>>>,
+}
+
+impl Connection {
+    pub fn target(&self) -> &Handle<Client> {
+        self.handles
+            .last()
+            .expect("a connection has at least one hop")
+    }
+
+    pub async fn close(&self) {
+        for h in self.handles.iter().rev() {
+            let _ = h.disconnect(Disconnect::ByApplication, "", "pt-BR").await;
+        }
+    }
+}
+
+fn config(hop: &Hop) -> Arc<client::Config> {
+    Arc::new(client::Config {
+        inactivity_timeout: None,
+        keepalive_interval: Some(Duration::from_secs(u64::from(
+            hop.keepalive.unwrap_or(30).max(5),
+        ))),
+        keepalive_max: 4,
+        nodelay: true,
+        ..Default::default()
+    })
+}
+
+async fn authenticate(handle: &mut Handle<Client>, hop: &Hop) -> CmdResult<()> {
+    if let Some((pem, passphrase)) = &hop.key {
+        let key =
+            russh::keys::decode_secret_key(pem, passphrase.as_deref().filter(|p| !p.is_empty()))
+                .map_err(|e| {
+                    CmdError::new("bad_key", format!("Não foi possível ler a chave SSH: {e}"))
+                })?;
+        let hash = if key.algorithm().is_rsa() {
+            handle.best_supported_rsa_hash().await?.flatten()
+        } else {
+            None
+        };
+        let result = handle
+            .authenticate_publickey(
+                &hop.username,
+                PrivateKeyWithHashAlg::new(Arc::new(key), hash),
+            )
+            .await?;
+        if matches!(result, AuthResult::Success) {
+            return Ok(());
+        }
+    }
+    if let Some(password) = &hop.password {
+        let result = handle
+            .authenticate_password(&hop.username, password)
+            .await?;
+        if matches!(result, AuthResult::Success) {
+            return Ok(());
+        }
+    }
+    Err(CmdError::new(
+        "auth_failed",
+        format!(
+            "Autenticação recusada em {} como {}.",
+            hop.label, hop.username
+        ),
+    ))
+}
+
+/// Connects through every hop. `trust_new` accepts unknown host keys (they are returned in
+/// `new_host_keys` to be saved); a changed key is always refused.
+pub async fn connect(plan: &Plan, trust_new: bool) -> CmdResult<Connection> {
+    let remote_forwards = Arc::new(Mutex::new(HashMap::new()));
+    let mut handles: Vec<Handle<Client>> = Vec::new();
+    let mut new_host_keys = Vec::new();
+    for hop in &plan.hops {
+        let seen = Arc::new(Mutex::new(None));
+        let handler = Client {
+            host: hop.host_port(),
+            expected: hop.known_fingerprint.clone(),
+            trust_new,
+            seen: seen.clone(),
+            remote_forwards: remote_forwards.clone(),
+        };
+        let result = match handles.last() {
+            None => tokio::time::timeout(
+                Duration::from_secs(15),
+                client::connect(config(hop), (hop.address.as_str(), hop.port), handler),
+            )
+            .await
+            .map_err(|_| {
+                CmdError::new(
+                    "timeout",
+                    format!("Tempo esgotado ao conectar em {}.", hop.host_port()),
+                )
+            })?,
+            Some(previous) => {
+                let channel = previous
+                    .channel_open_direct_tcpip(
+                        hop.address.clone(),
+                        u32::from(hop.port),
+                        "127.0.0.1",
+                        0,
+                    )
+                    .await?;
+                client::connect_stream(config(hop), channel.into_stream(), handler).await
+            }
+        };
+        let seen = seen.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut handle = match result {
+            Ok(h) => h,
+            Err(e) => {
+                for h in handles.iter().rev() {
+                    let _ = h.disconnect(Disconnect::ByApplication, "", "pt-BR").await;
+                }
+                return Err(host_key_error(hop, seen).unwrap_or_else(|| {
+                    CmdError::new(
+                        "connect_failed",
+                        format!("Não foi possível conectar em {}: {e}", hop.host_port()),
+                    )
+                }));
+            }
+        };
+        if hop.known_fingerprint.is_none()
+            && let Some(key) = seen
+        {
+            new_host_keys.push(key);
+        }
+        authenticate(&mut handle, hop).await?;
+        handles.push(handle);
+    }
+    Ok(Connection {
+        handles,
+        new_host_keys,
+        remote_forwards,
+    })
+}
+
+fn host_key_error(hop: &Hop, seen: Option<NewHostKey>) -> Option<CmdError> {
+    let seen = seen?;
+    match &hop.known_fingerprint {
+        Some(expected) if *expected != seen.fingerprint => Some(
+            CmdError::new(
+                "host_key_changed",
+                format!(
+                    "ATENÇÃO: a chave do servidor {} mudou. Pode ser uma reinstalação ou um ataque man-in-the-middle.",
+                    seen.host
+                ),
+            )
+            .with_details(json!({ "host": seen.host, "expected": expected, "actual": seen.fingerprint, "key_type": seen.key_type })),
+        ),
+        None => Some(
+            CmdError::new("host_key_unknown", format!("Primeira conexão com {}. Confirme a impressão digital do servidor.", seen.host))
+                .with_details(json!({ "host": seen.host, "fingerprint": seen.fingerprint, "key_type": seen.key_type })),
+        ),
+        _ => None,
+    }
+}
+
+/// Saves host keys accepted on first use as synced `KnownHost` entities.
+pub fn remember_host_keys(vessel: &mut Vessel, keys: &[NewHostKey]) -> CmdResult<()> {
+    if keys.is_empty() {
+        return Ok(());
+    }
+    let vault = vessel.personal_vault()?;
+    let existing = vessel.items(Some(EntityKind::KnownHost))?;
+    for key in keys {
+        let entity = Entity::KnownHost(KnownHost {
+            host: key.host.clone(),
+            key_type: key.key_type.clone(),
+            fingerprint: key.fingerprint.clone(),
+            ..Default::default()
+        });
+        let id = existing
+            .iter()
+            .find(|i| matches!(&i.entity, Entity::KnownHost(k) if k.host == key.host))
+            .map(|i| i.id);
+        let vault = existing
+            .iter()
+            .find(|i| Some(i.id) == id)
+            .map_or(vault, |i| i.vault_id);
+        vessel.save(vault, id, entity)?;
+    }
+    Ok(())
+}
+
+/// Runs an interactive shell on an established connection until either side closes it.
+pub fn run_shell(
+    conn: Connection,
+    backend: SessionBackend,
+    cols: u16,
+    rows: u16,
+    startup: Option<String>,
+) {
+    let SessionBackend { session, mut input } = backend;
+    tokio::spawn(async move {
+        let result: CmdResult<()> = async {
+            let mut channel = conn.target().channel_open_session().await?;
+            channel.request_pty(false, "xterm-256color", u32::from(cols), u32::from(rows), 0, 0, &[]).await?;
+            channel.request_shell(false).await?;
+            if let Some(script) = startup.filter(|s| !s.trim().is_empty()) {
+                let script = if script.ends_with('\n') { script } else { format!("{script}\n") };
+                channel.data(script.as_bytes()).await?;
+            }
+            loop {
+                tokio::select! {
+                    msg = channel.wait() => match msg {
+                        Some(ChannelMsg::Data { data }) => session.push_output(&data),
+                        Some(ChannelMsg::ExtendedData { data, .. }) => session.push_output(&data),
+                        Some(ChannelMsg::ExitStatus { exit_status }) => {
+                            session.mark_exited(&format!("sessão encerrada com código {exit_status}"));
+                        }
+                        Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break,
+                        _ => {}
+                    },
+                    cmd = input.recv() => match cmd {
+                        Some(Input::Data(bytes)) => channel.data(bytes.as_slice()).await?,
+                        Some(Input::Resize { cols, rows }) => channel.window_change(u32::from(cols), u32::from(rows), 0, 0).await?,
+                        Some(Input::Close) | None => {
+                            let _ = channel.close().await;
+                            break;
+                        }
+                    },
+                }
+            }
+            Ok(())
+        }
+        .await;
+        conn.close().await;
+        match result {
+            Ok(()) => session.mark_exited("conexão encerrada"),
+            Err(e) => session.mark_exited(&e.message),
+        }
+    });
+}

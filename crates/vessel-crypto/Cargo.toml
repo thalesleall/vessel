@@ -1,0 +1,37 @@
+[package]
+name = "vessel-crypto"
+version = "0.1.0"
+description = "Client-side cryptography for Vessel: record envelopes, key wrapping, vault grants and OPAQUE."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = []
+# Server half of OPAQUE. The sync agent enables this; it never needs any other secret material.
+server = []
+
+[dependencies]
+argon2 = "0.6.0"
+chacha20poly1305 = { version = "0.11.0", features = ["zeroize"] }
+ed25519-dalek = "3.0.0"
+getrandom = "0.4.3"
+hkdf = "0.13.0"
+hpke = { version = "0.15.1", default-features = false, features = ["alloc", "getrandom", "x25519", "chacha", "hkdfsha2"] }
+opaque-ke = { version = "4.0.1", features = ["argon2"] }
+# opaque-ke 4 takes a rand 0.8 RNG; this only turns on `rand::rngs::OsRng` in that version.
+rand_08 = { package = "rand", version = "0.8", default-features = false, features = ["getrandom"] }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.11.1"
+# opaque-ke 4 is still built on the digest 0.10 generation of RustCrypto; its key exchange needs this exact Sha512.
+sha2_010 = { package = "sha2", version = "0.10" }
+subtle = "2.6.1"
+thiserror = "2.0.21"
+zeroize = { version = "1.9.1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
+vessel-crypto = { path = ".", features = ["server"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,4 @@
+{$VESSEL_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy agent:8080
+}
