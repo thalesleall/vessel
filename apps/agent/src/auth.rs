@@ -116,7 +116,9 @@ pub fn authenticate(conn: &Connection, token: &str) -> AppResult<Option<Auth>> {
     let row: Option<(Vec<u8>, Vec<u8>, i64, Option<i64>)> = conn
         .query_row(
             "SELECT s.user_id, s.device_id, s.access_expires, d.revoked_at
-             FROM sessions s JOIN devices d ON d.id = s.device_id WHERE s.access_hash = ?1",
+             FROM sessions s JOIN devices d ON d.id = s.device_id
+             JOIN users u ON u.id = s.user_id AND u.suspended_at IS NULL AND u.deleted_at IS NULL
+             WHERE s.access_hash = ?1",
             [hash_token(token)],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )

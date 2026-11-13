@@ -19,6 +19,8 @@ services:
       VESSEL_TRUST_PROXY: "true"
       VESSEL_BOOTSTRAP_TOKEN: ${VESSEL_BOOTSTRAP_TOKEN:-}
       VESSEL_VAULT_INVITE_SIGNUPS: ${VESSEL_VAULT_INVITE_SIGNUPS:-true}
+      VESSEL_QUOTA_MB: ${VESSEL_QUOTA_MB:-0}
+      VESSEL_MAX_VAULTS: ${VESSEL_MAX_VAULTS:-0}
     volumes:
       - vessel-data:/data
     expose:

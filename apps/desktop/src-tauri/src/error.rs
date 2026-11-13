@@ -65,6 +65,21 @@ impl From<ClientError> for CmdError {
             ClientError::Http(_) if e.is_offline() => {
                 "Servidor inacessível. Você está offline?".to_string()
             }
+            ClientError::Api { code: vessel_client::ErrorCode::Suspended, .. } => {
+                "Esta conta foi suspensa pelo operador do servidor.".to_string()
+            }
+            ClientError::Api { code: vessel_client::ErrorCode::QuotaExceeded, message, .. } => {
+                if message.contains("vaults") {
+                    "Esta conta chegou ao limite de cofres compartilhados.".to_string()
+                } else if message.contains("invites") {
+                    "Há convites abertos demais neste cofre. Espere alguns expirarem.".to_string()
+                } else {
+                    "O espaço do dono do cofre acabou. As alterações ficam guardadas neste computador até haver espaço.".to_string()
+                }
+            }
+            ClientError::Api { code: vessel_client::ErrorCode::InvalidInvite, .. } => {
+                "Convite ou código de instalação inválido.".to_string()
+            }
             other => other.to_string(),
         };
         Self::new(code, message)

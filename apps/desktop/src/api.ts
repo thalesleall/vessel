@@ -23,6 +23,37 @@ export interface Status {
   insecure_server: boolean;
 }
 
+export interface AdminUser {
+  user_id: Uuid;
+  email: string;
+  created_at: number;
+  last_seen_at: number | null;
+  is_admin: boolean;
+  suspended: boolean;
+  devices: number;
+  vaults_owned: number;
+  bytes_used: number;
+  quota_bytes: number | null;
+}
+
+export interface AdminUserUpdate {
+  suspended?: boolean;
+  is_admin?: boolean;
+  /** null returns the account to the server default. */
+  quota_bytes?: number | null;
+}
+
+export interface ServerStats {
+  users: number;
+  active_users_30d: number;
+  suspended_users: number;
+  vaults: number;
+  records: number;
+  bytes: number;
+  sessions: number;
+  default_quota_bytes: number;
+}
+
 export interface MigrationOutcome {
   imported: number;
   skipped_duplicates: number;
@@ -214,6 +245,11 @@ export const api = {
   lock: () => invoke<Status>("lock"),
   logout: () => invoke<Status>("logout"),
   changePassword: (current: string, next: string) => invoke<void>("change_password", { current, new: next }),
+  deleteAccount: (password: string) => invoke<Status>("delete_account", { password }),
+  adminUsers: () => invoke<AdminUser[]>("admin_users"),
+  adminUpdateUser: (userId: Uuid, update: AdminUserUpdate) => invoke<void>("admin_update_user", { userId, update }),
+  adminDeleteUser: (userId: Uuid) => invoke<void>("admin_delete_user", { userId }),
+  adminStats: () => invoke<ServerStats>("admin_stats"),
   syncNow: () => invoke<SyncReport>("sync_now"),
   syncBackground: () => invoke<void>("sync_background"),
   devices: () => invoke<DeviceInfo[]>("devices"),

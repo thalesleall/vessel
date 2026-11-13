@@ -131,6 +131,16 @@ pub fn open(path: &std::path::Path) -> anyhow::Result<Connection> {
     Ok(conn)
 }
 
+/// A read-only connection to an on-disk database (the writer opened and migrated it).
+pub fn open_reader(path: &std::path::Path) -> anyhow::Result<Connection> {
+    let conn = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA query_only=ON;")?;
+    Ok(conn)
+}
+
 fn migrate(conn: &Connection) -> anyhow::Result<()> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     if version < 1 {
@@ -150,6 +160,20 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
             "BEGIN; ALTER TABLE sessions ADD COLUMN prev_refresh_hash BLOB;
              CREATE INDEX sessions_prev_refresh ON sessions(prev_refresh_hash);
              PRAGMA user_version = 3; COMMIT;",
+        )?;
+    }
+    if version < 4 {
+        // Operator controls (suspension, per-account quota), account deletion, and a running
+        // byte count per vault for quotas.
+        conn.execute_batch(
+            "BEGIN;
+             ALTER TABLE users ADD COLUMN suspended_at INTEGER;
+             ALTER TABLE users ADD COLUMN deleted_at INTEGER;
+             ALTER TABLE users ADD COLUMN quota_bytes INTEGER;
+             ALTER TABLE vaults ADD COLUMN bytes INTEGER NOT NULL DEFAULT 0;
+             UPDATE vaults SET bytes = (SELECT COALESCE(SUM(length(blob)), 0) FROM records WHERE records.vault_id = vaults.id);
+             CREATE INDEX vaults_owner ON vaults(owner_id);
+             PRAGMA user_version = 4; COMMIT;",
         )?;
     }
     Ok(())
@@ -282,6 +306,18 @@ pub fn user_by_id(conn: &Connection, id: &Uuid) -> AppResult<Option<UserRow>> {
 
 pub fn user_public(conn: &Connection, id: &Uuid) -> AppResult<Option<UserPublic>> {
     Ok(user_by_id(conn, id)?.map(|u| u.public()))
+}
+
+/// Whether an account may act: not suspended by the operator, not deleted.
+pub fn user_active(conn: &Connection, id: &Uuid) -> AppResult<bool> {
+    Ok(conn
+        .query_row(
+            "SELECT suspended_at IS NULL AND deleted_at IS NULL FROM users WHERE id = ?1",
+            [id.as_bytes().as_slice()],
+            |r| r.get::<_, bool>(0),
+        )
+        .optional()?
+        .unwrap_or(false))
 }
 
 pub fn user_count(conn: &Connection) -> AppResult<i64> {

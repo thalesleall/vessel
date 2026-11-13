@@ -42,8 +42,8 @@ async fn session_alive(state: &AppState, auth: &Auth) -> bool {
         .unwrap_or(false)
 }
 
-async fn run(state: AppState, auth: Auth, mut socket: WebSocket, _slot: SocketSlot) {
-    let mut events = state.events.subscribe();
+async fn run(state: AppState, auth: Auth, mut socket: WebSocket, slot: SocketSlot) {
+    let mut events = slot.subscribe();
     let mut ping = tokio::time::interval(Duration::from_secs(25));
     let mut check = tokio::time::interval(SESSION_CHECK);
     check.tick().await;
@@ -56,21 +56,20 @@ async fn run(state: AppState, auth: Auth, mut socket: WebSocket, _slot: SocketSl
                 }
             }
             received = events.recv() => match received {
-                Ok(n) if n.users.contains(&auth.user_id) => {
-                    if let ServerEvent::DeviceRevoked { device_id } = &n.event
+                Ok(event) => {
+                    if let ServerEvent::DeviceRevoked { device_id } = &event
                         && *device_id != auth.device_id
                     {
                         continue;
                     }
-                    let Ok(text) = serde_json::to_string(&n.event) else { continue };
+                    let Ok(text) = serde_json::to_string(&event) else { continue };
                     if socket.send(Message::Text(text.into())).await.is_err() {
                         break;
                     }
-                    if matches!(n.event, ServerEvent::DeviceRevoked { .. }) {
+                    if matches!(event, ServerEvent::DeviceRevoked { .. }) {
                         break;
                     }
                 }
-                Ok(_) => {}
                 // Missed events: clients pull on reconnect, so tell them to resync everything.
                 Err(RecvError::Lagged(_)) => break,
                 Err(RecvError::Closed) => break,

@@ -73,7 +73,7 @@ pub async fn pull(
 ) -> AppResult<Json<ChangesPage>> {
     let limit = q.limit.unwrap_or(MAX_BATCH).clamp(1, MAX_BATCH);
     let page = state
-        .db(move |conn| {
+        .db_read(move |conn| {
             let (row, _) = vault_for_member(conn, &vault, &auth.user_id)?;
             let mut stmt = conn.prepare(&format!(
                 "SELECT {RECORD_COLUMNS} FROM records WHERE vault_id = ?1 AND seq > ?2 ORDER BY seq LIMIT ?3"
@@ -104,6 +104,12 @@ pub async fn push(
             "too many operations",
         ));
     }
+    // Writes per account per minute: one account cannot monopolize the database.
+    state.check_rate_limit(
+        crate::state::RateKey::account(&format!("push:{}", auth.user_id)),
+        crate::state::PUSH_RATE_PER_MIN,
+    )?;
+    let default_quota = state.config.quota_bytes;
     let (results, last_seq, members) = state
         .db(move |conn| {
             let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
@@ -111,6 +117,14 @@ pub async fn push(
             if !role.can_write() {
                 return Err(AppError::forbidden("read-only access to this vault"));
             }
+            // Storage counts against the vault's owner.
+            let (quota, mut used): (u64, i64) = tx.query_row(
+                "SELECT u.quota_bytes, (SELECT COALESCE(SUM(bytes), 0) FROM vaults WHERE owner_id = v.owner_id)
+                 FROM vaults v JOIN users u ON u.id = v.owner_id WHERE v.id = ?1",
+                [vault.as_bytes().as_slice()],
+                |r| Ok((r.get::<_, Option<i64>>(0)?.map_or(default_quota, |q| q.max(0) as u64), r.get(1)?)),
+            )?;
+            let mut added: i64 = 0;
             let mut seq = row.last_seq;
             let mut results = Vec::with_capacity(req.ops.len());
             for op in req.ops {
@@ -127,6 +141,11 @@ pub async fn push(
                 }
                 let current = current_record(&tx, &vault, &op.id)?;
                 let current_version = current.as_ref().map_or(0, |c| c.version);
+                let delta = op.blob.0.len() as i64 - current.as_ref().map_or(0, |c| c.blob.0.len() as i64);
+                if quota > 0 && delta > 0 && (used + delta) as u64 > quota {
+                    results.push(PushResult::Rejected { id: op.id, reason: "storage quota exceeded".into() });
+                    continue;
+                }
                 if op.base_version != current_version {
                     if let Some(current) = current {
                         results.push(PushResult::Conflict { id: op.id, current });
@@ -154,8 +173,14 @@ pub async fn push(
                         auth.device_id.as_bytes().as_slice(),
                     ],
                 )?;
+                used += delta;
+                added += delta;
                 results.push(PushResult::Ok { id: op.id, version, seq });
             }
+            tx.execute(
+                "UPDATE vaults SET bytes = MAX(0, bytes + ?1) WHERE id = ?2",
+                params![added, vault.as_bytes().as_slice()],
+            )?;
             tx.execute("UPDATE vaults SET last_seq = ?1 WHERE id = ?2", params![seq as i64, vault.as_bytes().as_slice()])?;
             let changed = seq != row.last_seq;
             let members = if changed { vault_members(&tx, &vault)? } else { Vec::new() };

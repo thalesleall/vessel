@@ -188,7 +188,7 @@ pub fn insert_new_vault(
 
 pub async fn list(State(state): State<AppState>, auth: Auth) -> AppResult<Json<Vec<VaultSummary>>> {
     let vaults = state
-        .db(move |conn| {
+        .db_read(move |conn| {
             let mut stmt =
                 conn.prepare("SELECT vault_id, role FROM vault_members WHERE user_id = ?1")?;
             let rows: Vec<(Vec<u8>, i64)> = stmt
@@ -219,9 +219,24 @@ pub async fn create(
             "personal vaults are created at sign-up",
         ));
     }
+    let max_vaults = state.config.max_vaults;
     let row = state
         .db(move |conn| {
             let tx = conn.transaction()?;
+            if max_vaults > 0 {
+                let owned: i64 = tx.query_row(
+                    "SELECT COUNT(*) FROM vaults WHERE owner_id = ?1 AND personal = 0",
+                    [auth.user_id.as_bytes().as_slice()],
+                    |r| r.get(0),
+                )?;
+                if owned >= i64::from(max_vaults) {
+                    return Err(AppError::new(
+                        axum::http::StatusCode::FORBIDDEN,
+                        ErrorCode::QuotaExceeded,
+                        "this account reached its limit of shared vaults",
+                    ));
+                }
+            }
             let row = insert_new_vault(&tx, &auth.user_id, &req)?;
             tx.commit()?;
             Ok(row)
@@ -238,7 +253,7 @@ pub async fn get(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<VaultSummary>> {
     let (row, role) = state
-        .db(move |conn| vault_for_member(conn, &id, &auth.user_id))
+        .db_read(move |conn| vault_for_member(conn, &id, &auth.user_id))
         .await?;
     Ok(Json(summary(row, role)))
 }
@@ -318,7 +333,7 @@ pub async fn membership(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<MembershipResponse>> {
     let response = state
-        .db(move |conn| {
+        .db_read(move |conn| {
             vault_for_member(conn, &id, &auth.user_id)?;
             let events = db::membership_events(conn, &id)?;
             let mut stmt = conn.prepare(
@@ -370,6 +385,18 @@ pub async fn change_membership(
             }
             if row.state == VaultState::Rotating && req.event.body.action != Action::Remove {
                 return Err(AppError::conflict("finish the key rotation first"));
+            }
+            let events: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM membership_events WHERE vault_id = ?1",
+                [id.as_bytes().as_slice()],
+                |r| r.get(0),
+            )?;
+            if events >= crate::state::MAX_MEMBERSHIP_EVENTS {
+                return Err(AppError::new(
+                    axum::http::StatusCode::FORBIDDEN,
+                    ErrorCode::QuotaExceeded,
+                    "this vault's membership history is full",
+                ));
             }
             let body = &req.event.body;
             if body.actor != *auth.user_id.as_bytes() {
@@ -510,7 +537,7 @@ pub async fn my_grants(
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<GrantsResponse>> {
     let response = state
-        .db(move |conn| {
+        .db_read(move |conn| {
             vault_for_member(conn, &id, &auth.user_id)?;
             let mut stmt = conn.prepare(
                 "SELECT grant_json FROM grants WHERE vault_id = ?1 AND recipient_id = ?2 ORDER BY key_version",

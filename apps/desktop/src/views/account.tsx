@@ -11,6 +11,7 @@ export function Account() {
   const [next2, setNext2] = createSignal("");
   const [connecting, setConnecting] = createSignal(false);
   const [outcome, setOutcome] = createSignal<{ result: MigrationOutcome; toLocal: boolean } | null>(null);
+  const [deleting, setDeleting] = createSignal(false);
   const local = () => status()?.local ?? false;
 
   const change = async () => {
@@ -86,6 +87,13 @@ export function Account() {
         <Button variant="danger" icon={local() ? "trash" : "logout"} onClick={logout}>{local() ? "Apagar dados" : "Sair"}</Button>
       </div>
 
+      <Show when={!local()}>
+        <div class="section-title">Excluir conta</div>
+        <p>Apaga a conta no servidor: os cofres de que você é dono (com tudo o que há neles, também para quem os compartilha), seus dispositivos e seu e-mail. Dos cofres de outras pessoas você sai. Não dá para desfazer.</p>
+        <Button variant="danger" icon="trash" onClick={() => setDeleting(true)}>Excluir minha conta</Button>
+      </Show>
+      <Show when={deleting()}><DeleteAccount onClose={() => setDeleting(false)} /></Show>
+
       <Show when={connecting()}>
         <ConnectServer onClose={() => setConnecting(false)}
           onDone={(result) => { setConnecting(false); setOutcome({ result, toLocal: false }); setStatus(result.status); refreshData(); }} />
@@ -94,6 +102,43 @@ export function Account() {
         {(o) => <MigrationDone outcome={o().result} toLocal={o().toLocal} onClose={() => setOutcome(null)} />}
       </Show>
     </div>
+  );
+}
+
+/** Deleting the account: the password proves it to the server; the e-mail, typed, to the user. */
+function DeleteAccount(props: { onClose: () => void }) {
+  const [password, setPassword] = createSignal("");
+  const [typed, setTyped] = createSignal("");
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+  const email = () => status()?.email ?? "";
+  const ready = () => password() !== "" && typed().trim().toLowerCase() === email().toLowerCase();
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    if (!ready()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setStatus(await api.deleteAccount(password()));
+      toast("Conta excluída.", "success");
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title="Excluir sua conta?" onClose={props.onClose}
+      footer={<>
+        <Button onClick={props.onClose}>Cancelar</Button>
+        <Button variant="danger" icon="trash" busy={busy()} disabled={!ready()} onClick={submit}>Excluir para sempre</Button>
+      </>}>
+      <form class="form" onSubmit={submit}>
+        <p class="confirm-text">Seus cofres e tudo o que há neles serão apagados do servidor e deste computador. Quem compartilha esses cofres com você também perde o acesso a eles.</p>
+        <Field label="Senha"><input type="password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} autocomplete="current-password" autofocus /></Field>
+        <Field label={`Digite ${email()} para confirmar`}><input value={typed()} onInput={(e) => setTyped(e.currentTarget.value)} /></Field>
+        <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
+      </form>
+    </Modal>
   );
 }
 

@@ -209,6 +209,10 @@ impl Api {
     pub async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         self.call::<(), T>(Method::DELETE, path, None).await
     }
+
+    pub async fn patch<B: Serialize, T: DeserializeOwned>(&self, path: &str, body: &B) -> Result<T> {
+        self.call(Method::PATCH, path, Some(body)).await
+    }
 }
 
 /// `https://Host:443/` → `https://host:443`; adds `https://` when no scheme is given.

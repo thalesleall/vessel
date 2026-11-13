@@ -313,7 +313,16 @@ pub async fn login_finish(
         .map_err(|_| AppError::unauthorized())?;
 
     let response = state
-        .db(move |conn| auth_response(conn, user_id, &req.device))
+        .db(move |conn| {
+            if !db::user_active(conn, &user_id)? {
+                return Err(AppError::new(
+                    axum::http::StatusCode::FORBIDDEN,
+                    ErrorCode::Suspended,
+                    "this account is suspended; contact the server operator",
+                ));
+            }
+            auth_response(conn, user_id, &req.device)
+        })
         .await?;
     tracing::info!(user = %user_id, device = %response.device_id, "login");
     Ok(Json(response))
@@ -333,7 +342,9 @@ pub async fn refresh(
             let row: Option<(Vec<u8>, Vec<u8>, i64, Vec<u8>, Option<i64>)> = conn
                 .query_row(
                     "SELECT s.id, s.device_id, s.refresh_expires, d.public_key, d.revoked_at
-                     FROM sessions s JOIN devices d ON d.id = s.device_id WHERE s.refresh_hash = ?1",
+                     FROM sessions s JOIN devices d ON d.id = s.device_id
+                     JOIN users u ON u.id = s.user_id AND u.suspended_at IS NULL AND u.deleted_at IS NULL
+                     WHERE s.refresh_hash = ?1",
                     [hash_token(&req.refresh_token)],
                     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
                 )
@@ -488,6 +499,82 @@ pub async fn password_finish(
             Ok(())
         })
         .await?;
+    Ok(Json(()))
+}
+
+/// Deleting the account needs the password (an OPAQUE login), like changing it.
+pub async fn delete_start(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(req): Json<AccountDeleteStartRequest>,
+) -> AppResult<Json<AccountDeleteStartResponse>> {
+    state.check_account_rate(&auth.user_id.to_string())?;
+    let user_id = auth.user_id;
+    let user = state
+        .db(move |conn| user_by_id(conn, &user_id))
+        .await?
+        .ok_or_else(AppError::unauthorized)?;
+    let server_id = state.config.server_id();
+    let identity = OpaqueIdentity {
+        user: user.email.as_bytes(),
+        server: server_id.as_bytes(),
+    };
+    let (login, login_response) = server_login_start(
+        &state.setup,
+        Some(&user.password_file),
+        req.login_request.as_slice(),
+        user.id.as_bytes(),
+        &identity,
+    )?;
+    let deletion_id = state.put_registration(Registration::AccountDeletion {
+        user_id: auth.user_id,
+        login,
+    })?;
+    Ok(Json(AccountDeleteStartResponse {
+        deletion_id,
+        login_response: login_response.into(),
+        login_kdf: user.kdf,
+    }))
+}
+
+pub async fn delete_finish(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(req): Json<AccountDeleteFinishRequest>,
+) -> AppResult<Json<()>> {
+    let Registration::AccountDeletion { user_id, login } =
+        state.take_registration(&req.deletion_id)?
+    else {
+        return Err(AppError::bad_request("not an account deletion"));
+    };
+    if user_id != auth.user_id {
+        return Err(AppError::forbidden("deletion belongs to another user"));
+    }
+    let email = state
+        .db(move |conn| Ok(user_by_id(conn, &user_id)?.map(|u| u.email)))
+        .await?
+        .ok_or_else(AppError::unauthorized)?;
+    let server_id = state.config.server_id();
+    login
+        .finish(
+            req.login_finalization.as_slice(),
+            &OpaqueIdentity {
+                user: email.as_bytes(),
+                server: server_id.as_bytes(),
+            },
+        )
+        .map_err(|_| AppError::unauthorized())?;
+    let removed = state
+        .db(move |conn| {
+            let tx = conn.transaction()?;
+            let removed = crate::accounts::delete_account(&tx, &user_id, true)?;
+            tx.commit()?;
+            Ok(removed)
+        })
+        .await?;
+    for (vault_id, members) in removed {
+        state.notify(members, ServerEvent::VaultRemoved { vault_id });
+    }
     Ok(Json(()))
 }
 

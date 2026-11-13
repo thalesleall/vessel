@@ -108,6 +108,7 @@ impl Vessel {
     pub(crate) async fn push_vault(&mut self, vault: Uuid) -> Result<(usize, usize)> {
         let mut pushed = 0;
         let mut conflicts = 0;
+        let mut over_quota = false;
         let can_write = self
             .store
             .vault(&vault)?
@@ -180,6 +181,9 @@ impl Vessel {
                                     self.api()?.get(&format!("/v1/vaults/{vault}")).await?;
                                 self.store.put_vault(&summary)?;
                                 retry = true;
+                            } else if reason.contains("quota") {
+                                // Kept: it goes up once the owner frees space or gets more.
+                                over_quota = true;
                             } else {
                                 self.store.remove_pending(&vault, &id)?;
                             }
@@ -190,6 +194,13 @@ impl Vessel {
             if !retry {
                 break;
             }
+        }
+        if over_quota {
+            return Err(ClientError::Api {
+                status: 507,
+                code: ErrorCode::QuotaExceeded,
+                message: "the vault owner's storage quota is used up; edits wait on this device".into(),
+            });
         }
         Ok((pushed, conflicts))
     }

@@ -34,6 +34,11 @@ pub struct Config {
     /// on an invite-only server. Set `false` on a hosted service where accounts are sold, so
     /// only server invites (or open sign-ups) create accounts.
     pub vault_invite_signups: bool,
+    /// `VESSEL_QUOTA_MB`: default storage per account (the vaults it owns), in MiB. 0 (default)
+    /// is unlimited; the operator can set a different limit per account.
+    pub quota_bytes: u64,
+    /// `VESSEL_MAX_VAULTS`: shared vaults an account may own. 0 (default) is unlimited.
+    pub max_vaults: u32,
 }
 
 impl Config {
@@ -78,6 +83,17 @@ impl Config {
             bootstrap_generated,
             vault_invite_signups: var("VESSEL_VAULT_INVITE_SIGNUPS")
                 .is_none_or(|v| v != "false" && v != "0"),
+            quota_bytes: var("VESSEL_QUOTA_MB")
+                .map(|v| v.parse::<u64>())
+                .transpose()
+                .context("VESSEL_QUOTA_MB")?
+                .unwrap_or(0)
+                .saturating_mul(1024 * 1024),
+            max_vaults: var("VESSEL_MAX_VAULTS")
+                .map(|v| v.parse())
+                .transpose()
+                .context("VESSEL_MAX_VAULTS")?
+                .unwrap_or(0),
         })
     }
 
@@ -94,6 +110,8 @@ impl Config {
             bootstrap_token: None,
             bootstrap_generated: false,
             vault_invite_signups: true,
+            quota_bytes: 0,
+            max_vaults: 0,
         }
     }
 

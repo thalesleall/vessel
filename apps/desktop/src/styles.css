@@ -180,6 +180,11 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .tab .state { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); flex: none; }
 .tab .state.dead { background: var(--text-3); }
 .sync-line.insecure { color: var(--danger); }
+.stats-grid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; }
+.stats-grid dt { color: var(--text-2); }
+.stats-grid dd { margin: 0; font-variant-numeric: tabular-nums; }
+.admin-users .row { align-items: center; }
+.admin-users .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .tabbar-tabs { display: flex; align-items: stretch; gap: 2px; min-width: 0; }
 .tab-home { min-width: auto; }
 .tab-new { min-width: auto; padding: 7px 10px; }

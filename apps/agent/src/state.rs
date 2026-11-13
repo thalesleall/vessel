@@ -21,6 +21,12 @@ pub const MAX_PENDING_FLOWS: usize = 20_000;
 const MAX_RATE_BUCKETS: usize = 200_000;
 /// Attempts per account (e-mail or user) per minute, whatever the source address.
 pub const ACCOUNT_RATE_PER_MIN: u32 = 20;
+/// Record pushes per account per minute.
+pub const PUSH_RATE_PER_MIN: u32 = 240;
+/// Open invites per vault.
+pub const MAX_OPEN_INVITES: i64 = 100;
+/// Membership events per vault (each change replays the whole history).
+pub const MAX_MEMBERSHIP_EVENTS: i64 = 10_000;
 /// Open event sockets per user.
 pub const MAX_SOCKETS_PER_USER: usize = 16;
 
@@ -69,6 +75,11 @@ pub enum Registration {
     Recovery {
         user_id: Uuid,
     },
+    /// Not a registration: an account deletion, confirmed by a login with the password.
+    AccountDeletion {
+        user_id: Uuid,
+        login: ServerLoginState,
+    },
 }
 
 pub struct PendingRegistration {
@@ -82,21 +93,25 @@ pub struct PendingLogin {
     pub expires_at: i64,
 }
 
-/// A real-time event addressed to a set of users.
-#[derive(Clone, Debug)]
-pub struct Notification {
-    pub users: Vec<Uuid>,
-    pub event: ServerEvent,
-}
+/// Read-only database connections.
+const READERS: usize = 4;
+/// Events buffered per user before a slow socket is dropped (it then resyncs).
+const EVENTS_PER_USER: usize = 256;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
     db: Arc<Mutex<Connection>>,
+    /// Read-only connections (WAL lets them read while the writer writes); empty for an
+    /// in-memory database, where reads share the writer.
+    readers: Arc<Vec<Mutex<Connection>>>,
+    next_reader: Arc<std::sync::atomic::AtomicUsize>,
     pub setup: Arc<ServerSetup>,
     pub registrations: Arc<Mutex<HashMap<Uuid, PendingRegistration>>>,
     pub logins: Arc<Mutex<HashMap<Uuid, PendingLogin>>>,
-    pub events: broadcast::Sender<Notification>,
+    /// One channel per user with an open socket: a busy account cannot make other accounts'
+    /// sockets fall behind.
+    channels: Arc<Mutex<HashMap<Uuid, broadcast::Sender<ServerEvent>>>>,
     rate: Arc<Mutex<HashMap<RateKey, (i64, u32)>>>,
     sockets: Arc<Mutex<HashMap<Uuid, usize>>>,
 }
@@ -104,7 +119,19 @@ pub struct AppState {
 /// Holds one of a user's event sockets; released on drop.
 pub struct SocketSlot {
     sockets: Arc<Mutex<HashMap<Uuid, usize>>>,
+    channels: Arc<Mutex<HashMap<Uuid, broadcast::Sender<ServerEvent>>>>,
     user: Uuid,
+}
+
+impl SocketSlot {
+    /// Events for this slot's user.
+    pub fn subscribe(&self) -> broadcast::Receiver<ServerEvent> {
+        let mut channels = self.channels.lock().unwrap_or_else(|e| e.into_inner());
+        channels
+            .entry(self.user)
+            .or_insert_with(|| broadcast::channel(EVENTS_PER_USER).0)
+            .subscribe()
+    }
 }
 
 impl Drop for SocketSlot {
@@ -115,6 +142,9 @@ impl Drop for SocketSlot {
             *n -= 1;
             if *n == 0 {
                 map.remove(&self.user);
+                if let Ok(mut channels) = self.channels.lock() {
+                    channels.remove(&self.user);
+                }
             }
         }
     }
@@ -137,17 +167,25 @@ impl AppState {
             && let Some(code) = &config.bootstrap_token
         {
             tracing::warn!(
-                "no account yet: the first account (the server admin) must enter this installation code: {code}                  (set VESSEL_BOOTSTRAP_TOKEN to choose it)"
+                "no account yet: the first account (the server admin) must enter this installation code: {code} (set VESSEL_BOOTSTRAP_TOKEN to choose it)"
             );
         }
-        let (events, _) = broadcast::channel(1024);
+        let readers = if config.database.as_os_str() == ":memory:" {
+            Vec::new()
+        } else {
+            (0..READERS)
+                .map(|_| db::open_reader(&config.database).map(Mutex::new))
+                .collect::<anyhow::Result<Vec<_>>>()?
+        };
         Ok(Self {
             config: Arc::new(config),
             db: Arc::new(Mutex::new(conn)),
+            readers: Arc::new(readers),
+            next_reader: Arc::default(),
             setup: Arc::new(setup),
             registrations: Arc::default(),
             logins: Arc::default(),
-            events,
+            channels: Arc::default(),
             rate: Arc::default(),
             sockets: Arc::default(),
         })
@@ -169,9 +207,36 @@ impl AppState {
         .await?
     }
 
+    /// Runs a read-only closure on one of the reader connections (the writer when there are
+    /// none), so large pulls do not hold up writes.
+    pub async fn db_read<T, F>(&self, f: F) -> AppResult<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Connection) -> AppResult<T> + Send + 'static,
+    {
+        if self.readers.is_empty() {
+            return self.db(f).await;
+        }
+        let readers = self.readers.clone();
+        let i = self
+            .next_reader
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            % readers.len();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = readers[i]
+                .lock()
+                .map_err(|_| AppError::internal("database lock poisoned"))?;
+            f(&mut conn)
+        })
+        .await?
+    }
+
     pub fn notify(&self, users: Vec<Uuid>, event: ServerEvent) {
-        if !users.is_empty() {
-            let _ = self.events.send(Notification { users, event });
+        let Ok(channels) = self.channels.lock() else { return };
+        for user in users {
+            if let Some(tx) = channels.get(&user) {
+                let _ = tx.send(event.clone());
+            }
         }
     }
 
@@ -183,6 +248,10 @@ impl AppState {
     /// Rate limit per account: spreading attempts over many addresses does not help.
     pub fn check_account_rate(&self, account: &str) -> AppResult<()> {
         self.check_rate_key(RateKey::account(account), ACCOUNT_RATE_PER_MIN)
+    }
+
+    pub fn check_rate_limit(&self, key: RateKey, limit: u32) -> AppResult<()> {
+        self.check_rate_key(key, limit)
     }
 
     fn check_rate_key(&self, key: RateKey, limit: u32) -> AppResult<()> {
@@ -225,6 +294,7 @@ impl AppState {
         *n += 1;
         Ok(SocketSlot {
             sockets: self.sockets.clone(),
+            channels: self.channels.clone(),
             user,
         })
     }

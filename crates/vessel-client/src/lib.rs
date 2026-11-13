@@ -37,7 +37,10 @@ pub use local::MigrationReport;
 pub use sync::SyncReport;
 pub use vaults::{MemberView, MembersView, PendingView, VaultView};
 pub use vessel_model as model;
-pub use vessel_protocol::{DeviceInfo, InviteResponse, Role, ServerEvent, ServerInfo, SignupMode};
+pub use vessel_protocol::{
+    AdminUser, AdminUserUpdate, DeviceInfo, ErrorCode, InviteResponse, Role, ServerEvent, ServerInfo,
+    ServerStats, SignupMode,
+};
 
 use crate::api::Api;
 use crate::store::Store;
@@ -755,6 +758,91 @@ impl Vessel {
             .await?;
         self.persist_session().await?;
         Ok(invite)
+    }
+
+    // -- account deletion -----------------------------------------------------------------
+
+    /// Deletes the account on the server and everything on this device. Shared vaults owned by
+    /// someone else are left first (with signed events, so their members' apps see it); vaults
+    /// this account owns are deleted with everything in them.
+    pub async fn delete_account(&mut self, password: &str) -> Result<()> {
+        let profile = self.profile()?.clone();
+        if profile.local {
+            return Err(ClientError::LocalMode);
+        }
+        unlock_local(&profile.local_unlock, password.as_bytes(), &profile.material)
+            .map_err(|_| ClientError::WrongPassword)?;
+        self.sync().await?;
+        let foreign: Vec<Uuid> = self
+            .vaults()?
+            .into_iter()
+            .filter(|v| v.role != Role::Owner)
+            .map(|v| v.id)
+            .collect();
+        for vault in foreign {
+            self.leave_vault(vault).await?;
+        }
+        let identity = OpaqueIdentity {
+            user: profile.email.as_bytes(),
+            server: profile.server_id.as_bytes(),
+        };
+        let (login, login_request) = client_login_start(password.as_bytes())?;
+        let start: AccountDeleteStartResponse = self
+            .api()?
+            .post(
+                "/v1/account/delete/start",
+                &AccountDeleteStartRequest {
+                    login_request: login_request.into(),
+                },
+            )
+            .await?;
+        start.login_kdf.validate_account()?;
+        let proof = login
+            .finish(
+                password.as_bytes(),
+                start.login_response.as_slice(),
+                &identity,
+                &start.login_kdf,
+            )
+            .map_err(|_| ClientError::WrongPassword)?;
+        self.api()?
+            .post::<_, ()>(
+                "/v1/account/delete/finish",
+                &AccountDeleteFinishRequest {
+                    deletion_id: start.deletion_id,
+                    login_finalization: proof.finalization.into(),
+                },
+            )
+            .await?;
+        self.forget()
+    }
+
+    // -- server administration (server admins only) ------------------------------------------
+
+    pub async fn admin_users(&mut self) -> Result<Vec<AdminUser>> {
+        let users = self.api()?.get("/v1/admin/users").await?;
+        self.persist_session().await?;
+        Ok(users)
+    }
+
+    pub async fn admin_update_user(&mut self, user_id: Uuid, update: &AdminUserUpdate) -> Result<()> {
+        self.api()?
+            .patch::<_, ()>(&format!("/v1/admin/users/{user_id}"), update)
+            .await?;
+        self.persist_session().await
+    }
+
+    pub async fn admin_delete_user(&mut self, user_id: Uuid) -> Result<()> {
+        self.api()?
+            .delete::<()>(&format!("/v1/admin/users/{user_id}"))
+            .await?;
+        self.persist_session().await
+    }
+
+    pub async fn admin_stats(&mut self) -> Result<ServerStats> {
+        let stats = self.api()?.get("/v1/admin/stats").await?;
+        self.persist_session().await?;
+        Ok(stats)
     }
 
     /// Server URL and a fresh access token, for [`events::listen`].

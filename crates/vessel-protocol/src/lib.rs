@@ -90,6 +90,10 @@ pub enum ErrorCode {
     InvalidInvite,
     RateLimited,
     Internal,
+    /// The server operator suspended this account.
+    Suspended,
+    /// The account's storage quota is used up.
+    QuotaExceeded,
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -372,6 +376,87 @@ pub struct MembershipChangeRequest {
     pub event: SignedEvent,
     #[serde(default)]
     pub grants: Vec<Grant>,
+}
+
+// -------------------------------------------------------------------------------------------------
+// Account deletion (the user) and server administration (the operator)
+// -------------------------------------------------------------------------------------------------
+
+/// `POST /v1/account/delete/start`: deleting the account needs the password, like changing it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AccountDeleteStartRequest {
+    pub login_request: Bytes,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AccountDeleteStartResponse {
+    pub deletion_id: Uuid,
+    pub login_response: Bytes,
+    pub login_kdf: KdfParams,
+}
+
+/// `POST /v1/account/delete/finish`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AccountDeleteFinishRequest {
+    pub deletion_id: Uuid,
+    pub login_finalization: Bytes,
+}
+
+/// One account, as the server operator sees it (`GET /v1/admin/users`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AdminUser {
+    pub user_id: Uuid,
+    pub email: String,
+    pub created_at: i64,
+    pub last_seen_at: Option<i64>,
+    pub is_admin: bool,
+    pub suspended: bool,
+    pub devices: u32,
+    pub vaults_owned: u32,
+    pub bytes_used: u64,
+    /// Storage limit for this account; `None` uses the server default.
+    pub quota_bytes: Option<u64>,
+}
+
+/// `PATCH /v1/admin/users/{id}`: only the fields present change.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AdminUserUpdate {
+    #[serde(default)]
+    pub suspended: Option<bool>,
+    #[serde(default)]
+    pub is_admin: Option<bool>,
+    /// `Some(None)` returns the account to the server default.
+    #[serde(default, with = "serde_with_double_option")]
+    pub quota_bytes: Option<Option<u64>>,
+}
+
+mod serde_with_double_option {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(v: &Option<Option<u64>>, s: S) -> Result<S::Ok, S::Error> {
+        match v {
+            None => s.serialize_none(),
+            Some(inner) => inner.serialize(s),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<u64>>, D::Error> {
+        Ok(Some(Option::<u64>::deserialize(d)?))
+    }
+}
+
+/// `GET /v1/admin/stats`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ServerStats {
+    pub users: u64,
+    pub active_users_30d: u64,
+    pub suspended_users: u64,
+    pub vaults: u64,
+    pub records: u64,
+    pub bytes: u64,
+    pub sessions: u64,
+    /// Server-wide default storage limit per account (0: unlimited).
+    pub default_quota_bytes: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

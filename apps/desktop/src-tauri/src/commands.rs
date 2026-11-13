@@ -295,6 +295,45 @@ pub async fn revoke_device(state: S<'_>, device_id: Uuid) -> CmdResult<()> {
     Ok(state.vessel.lock().await.revoke_device(device_id).await?)
 }
 
+/// Deletes the account on the server and everything on this computer.
+#[tauri::command]
+pub async fn delete_account(state: S<'_>, password: String) -> CmdResult<Status> {
+    state.terms.close_all();
+    state.forwards.stop_all();
+    let mut vessel = state.vessel.lock().await;
+    vessel.delete_account(&password).await?;
+    Ok(vessel.status())
+}
+
+#[tauri::command]
+pub async fn admin_users(state: S<'_>) -> CmdResult<Vec<vessel_client::AdminUser>> {
+    Ok(state.vessel.lock().await.admin_users().await?)
+}
+
+#[tauri::command]
+pub async fn admin_update_user(
+    state: S<'_>,
+    user_id: Uuid,
+    update: vessel_client::AdminUserUpdate,
+) -> CmdResult<()> {
+    Ok(state
+        .vessel
+        .lock()
+        .await
+        .admin_update_user(user_id, &update)
+        .await?)
+}
+
+#[tauri::command]
+pub async fn admin_delete_user(state: S<'_>, user_id: Uuid) -> CmdResult<()> {
+    Ok(state.vessel.lock().await.admin_delete_user(user_id).await?)
+}
+
+#[tauri::command]
+pub async fn admin_stats(state: S<'_>) -> CmdResult<vessel_client::ServerStats> {
+    Ok(state.vessel.lock().await.admin_stats().await?)
+}
+
 #[tauri::command]
 pub async fn signup_invite(state: S<'_>, email: Option<String>) -> CmdResult<InviteResponse> {
     Ok(state

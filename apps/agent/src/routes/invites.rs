@@ -43,6 +43,18 @@ pub async fn create_vault_invite(
             if role != Role::Owner && req.role >= Role::Admin {
                 return Err(AppError::forbidden("only the owner can invite admins"));
             }
+            let open: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM invites WHERE vault_id = ?1 AND accepted_by IS NULL AND expires_at > ?2",
+                params![vault.as_bytes().as_slice(), now()],
+                |r| r.get(0),
+            )?;
+            if open >= crate::state::MAX_OPEN_INVITES {
+                return Err(AppError::new(
+                    axum::http::StatusCode::FORBIDDEN,
+                    ErrorCode::QuotaExceeded,
+                    "too many open invites for this vault",
+                ));
+            }
             conn.execute(
                 "INSERT INTO invites (token_hash, vault_id, role, email, created_by, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![

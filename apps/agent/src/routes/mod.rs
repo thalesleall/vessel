@@ -1,4 +1,5 @@
 mod account;
+mod admin;
 mod auth;
 mod events;
 mod invites;
@@ -37,6 +38,8 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/recovery/finish", post(auth::recovery_finish))
         .route("/account/password/start", post(auth::password_start))
         .route("/account/password/finish", post(auth::password_finish))
+        .route("/account/delete/start", post(auth::delete_start))
+        .route("/account/delete/finish", post(auth::delete_finish))
         .layer(DefaultBodyLimit::max(AUTH_BODY_LIMIT));
     let api = Router::new()
         .route("/server/info", get(account::server_info))
@@ -67,6 +70,12 @@ pub fn router(state: AppState) -> Router {
         )
         // Invites
         .route("/admin/invites", post(invites::create_signup_invite))
+        .route("/admin/users", get(admin::list_users))
+        .route(
+            "/admin/users/{id}",
+            axum::routing::patch(admin::update_user).delete(admin::delete_user),
+        )
+        .route("/admin/stats", get(admin::stats))
         .route("/invites/{token}/accept", post(invites::accept))
         // Every request must finish in time: slow clients cannot hold handlers (and the
         // database) indefinitely. The event socket is upgraded first, so it is not cut off.
