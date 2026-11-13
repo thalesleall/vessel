@@ -1,0 +1,70 @@
+# Vessel test lab: sync agent + two throwaway SSH servers. Local testing only.
+#
+#   powershell -File deploy/dev/lab.ps1 up      (or: docker compose -f deploy/dev/docker-compose.yml up -d --build)
+#
+#   agent    http://localhost:8080   signups open, data in the "agent-data" volume
+#   bastion  127.0.0.1:2222          SSH, reachable from Windows
+#   target   target:22 / target:8000 only reachable THROUGH the bastion (jump host, forwards)
+#
+# Test credentials are generated once into deploy/dev/.lab/ (gitignored); see CREDENCIAIS.txt.
+name: vessel-lab
+
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: apps/agent/Dockerfile
+    image: vessel-agent:dev
+    restart: unless-stopped
+    environment:
+      VESSEL_PUBLIC_URL: http://localhost:8080
+      VESSEL_SIGNUPS: open
+      VESSEL_NAME: Vessel Lab
+      RUST_LOG: info,vessel_agent=debug
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - agent-data:/data
+    networks: [front]
+
+  keygen:
+    build: ./sshd
+    image: vessel-lab-sshd:dev
+    entrypoint: ["/usr/local/bin/keygen.sh"]
+    volumes:
+      - ./.lab:/lab
+    network_mode: none
+
+  bastion:
+    image: vessel-lab-sshd:dev
+    hostname: bastion
+    restart: unless-stopped
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:2222:22"
+    volumes:
+      - ./.lab:/lab:ro
+    networks: [front, internal]
+
+  target:
+    image: vessel-lab-sshd:dev
+    hostname: target
+    restart: unless-stopped
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
+    environment:
+      LAB_HTTP: "1"
+    volumes:
+      - ./.lab:/lab:ro
+    networks: [internal]
+
+networks:
+  front: {}
+  internal:
+    internal: true
+
+volumes:
+  agent-data:

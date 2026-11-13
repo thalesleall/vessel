@@ -86,6 +86,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cd apps/desktop && npx tsc --noEmit
 ```
 
+**Laboratório local** (Docker): `powershell -File deploy\dev\lab.ps1 up` sobe o agente em `http://localhost:8080` e dois servidores SSH de teste (bastion e um alvo só alcançável através dele). `cargo test -p vessel-desktop --lib -- --ignored lab_` testa o SSH e os port forwards do app contra eles, e `lab.ps1 bot <comando>` controla uma segunda conta (`vessel-dev`) para testar times. O roteiro manual completo está em [docs/TESTING.md](docs/TESTING.md).
+
 Os testes de ponta a ponta (`crates/vessel-client/tests/e2e.rs`) sobem um agente real em memória e cobrem:
 - três PCs com o mesmo ambiente;
 - merge de edições simultâneas;

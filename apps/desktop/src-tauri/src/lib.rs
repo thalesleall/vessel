@@ -4,6 +4,8 @@ mod background;
 mod commands;
 mod error;
 mod forward;
+#[cfg(test)]
+mod lab_tests;
 mod local;
 mod mcp;
 mod ops;

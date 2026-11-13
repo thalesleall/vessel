@@ -6,3 +6,4 @@ deploy/.env
 *.db
 *.db-wal
 *.db-shm
+deploy/dev/.lab/

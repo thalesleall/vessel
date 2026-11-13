@@ -6154,6 +6154,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "vessel-dev"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tokio",
+ "uuid",
+ "vessel-client",
+]
+
+[[package]]
 name = "vessel-mcp"
 version = "0.1.0"
 dependencies = [
