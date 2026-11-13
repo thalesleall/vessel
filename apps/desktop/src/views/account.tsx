@@ -1,6 +1,6 @@
 import { Show, createSignal } from "solid-js";
 import { api, errorCode, errorMessage, type MigrationOutcome, type ServerInfo } from "../api";
-import { attempt, copy, refreshData, setStatus, status, toast } from "../store";
+import { attempt, copy, refreshData, setStatus, status, toast, tryAction } from "../store";
 import { Button, Field, Icon, Modal, confirmAction } from "../ui";
 import { RecoveryKeyBody } from "../auth";
 
@@ -16,11 +16,11 @@ export function Account() {
   const change = async () => {
     if (next() !== next2()) return toast("As senhas novas não coincidem.", "error");
     if (next().length < 10) return toast("Use pelo menos 10 caracteres.", "error");
-    const ok = await attempt(
+    const ok = await tryAction(
       () => api.changePassword(current(), next()),
       local() ? "Senha alterada." : "Senha alterada. Os outros computadores precisam entrar de novo.",
     );
-    if (ok !== undefined) { setCurrent(""); setNext(""); setNext2(""); }
+    if (ok) { setCurrent(""); setNext(""); setNext2(""); }
   };
 
   const logout = async () => {

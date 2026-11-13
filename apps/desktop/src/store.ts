@@ -96,6 +96,20 @@ export function toast(text: string, kind: Toast["kind"] = "info") {
 }
 
 /** Runs an async action, showing errors as toasts. Returns undefined on failure. */
+/** Runs an action that returns nothing useful; true when it succeeded (errors become toasts). */
+export async function tryAction(fn: () => Promise<unknown>, success?: string): Promise<boolean> {
+  try {
+    await fn();
+    if (success) toast(success, "success");
+    return true;
+  } catch (e) {
+    toast(errorMessage(e), "error");
+    return false;
+  }
+}
+
+/** Runs an action and returns its result, or undefined when it failed (errors become toasts).
+ * Do not use it to detect success of an action that returns nothing: use tryAction. */
 export async function attempt<T>(fn: () => Promise<T>, success?: string): Promise<T | undefined> {
   try {
     const result = await fn();

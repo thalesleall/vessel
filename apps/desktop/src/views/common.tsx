@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import { api, type Entity, type Item, type Kind } from "../api";
-import { attempt, items, refreshData, vaults, writableVaults } from "../store";
+import { attempt, tryAction, items, refreshData, vaults, writableVaults } from "../store";
 import { Button, confirmAction } from "../ui";
 
 export function VaultSelect(props: { value: string; onChange: (id: string) => void; label?: string }) {
@@ -38,7 +38,7 @@ export function defaultVault(): string {
 
 /** Saves an entity, moving it first when the vault changed. */
 export async function saveEntity(original: Item | null, vaultId: string, entity: Entity): Promise<boolean> {
-  const ok = await attempt(async () => {
+  const ok = await tryAction(async () => {
     let id = original?.id ?? null;
     if (original && original.vault_id !== vaultId) {
       id = await api.moveItem(original.vault_id, vaultId, original.id);
@@ -46,7 +46,7 @@ export async function saveEntity(original: Item | null, vaultId: string, entity:
     await api.saveItem(vaultId, id, entity);
   }, "Salvo");
   await refreshData();
-  return ok !== undefined;
+  return ok;
 }
 
 export async function removeItem(item: Item, what: string) {

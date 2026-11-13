@@ -1,6 +1,6 @@
 import { For, Show, createResource, createSignal } from "solid-js";
 import { api, roleLabel, type InviteResponse, type Role, type VaultView } from "../api";
-import { attempt, copy, items, refreshData, setSection, status, toast, vaults } from "../store";
+import { attempt, copy, items, refreshData, setSection, status, toast, tryAction, vaults } from "../store";
 import { Badge, Button, Empty, Field, Icon, Modal, colorFor, confirmAction, initials } from "../ui";
 
 export function VaultsView() {
@@ -83,12 +83,12 @@ function VaultDetail(props: { vault: VaultView; onClosed: () => void }) {
   };
   const leave = async () => {
     if (!(await confirmAction(`Sair do cofre "${props.vault.name}"? Você perde acesso aos itens dele.`))) return;
-    if (await attempt(() => api.leaveVault(props.vault.id), "Você saiu do cofre") !== undefined) props.onClosed();
+    if (await tryAction(() => api.leaveVault(props.vault.id), "Você saiu do cofre")) props.onClosed();
     refreshData();
   };
   const destroy = async () => {
     if (!(await confirmAction(`Excluir o cofre "${props.vault.name}" e TODOS os itens dele para todos os membros?\nIsso não pode ser desfeito.`))) return;
-    if (await attempt(() => api.deleteVault(props.vault.id), "Cofre excluído") !== undefined) props.onClosed();
+    if (await tryAction(() => api.deleteVault(props.vault.id), "Cofre excluído")) props.onClosed();
     refreshData();
   };
 
