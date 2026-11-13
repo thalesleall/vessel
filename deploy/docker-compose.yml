@@ -17,6 +17,8 @@ services:
       VESSEL_SIGNUPS: ${VESSEL_SIGNUPS:-invite-only}
       VESSEL_NAME: ${VESSEL_NAME:-Vessel}
       VESSEL_TRUST_PROXY: "true"
+      VESSEL_BOOTSTRAP_TOKEN: ${VESSEL_BOOTSTRAP_TOKEN:-}
+      VESSEL_VAULT_INVITE_SIGNUPS: ${VESSEL_VAULT_INVITE_SIGNUPS:-true}
     volumes:
       - vessel-data:/data
     expose:

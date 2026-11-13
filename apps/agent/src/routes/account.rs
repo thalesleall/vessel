@@ -1,12 +1,11 @@
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use rusqlite::params;
-use serde::Deserialize;
 use uuid::Uuid;
 use vessel_protocol::*;
 
 use crate::auth::Auth;
-use crate::db::{self, now, user_by_email, user_by_id, uuid_from};
+use crate::db::{self, now, user_by_id, uuid_from};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -76,11 +75,19 @@ pub async fn revoke_device(
 ) -> AppResult<Json<()>> {
     let revoked = state
         .db(move |conn| {
-            let n = conn.execute(
+            // Only the caller's own devices: the sessions go only if the device was theirs.
+            let tx = conn.transaction()?;
+            let n = tx.execute(
                 "UPDATE devices SET revoked_at = ?1 WHERE id = ?2 AND user_id = ?3 AND revoked_at IS NULL",
                 params![now(), id.as_bytes().as_slice(), auth.user_id.as_bytes().as_slice()],
             )?;
-            conn.execute("DELETE FROM sessions WHERE device_id = ?1", [id.as_bytes().as_slice()])?;
+            if n > 0 {
+                tx.execute(
+                    "DELETE FROM sessions WHERE device_id = ?1 AND user_id = ?2",
+                    params![id.as_bytes().as_slice(), auth.user_id.as_bytes().as_slice()],
+                )?;
+            }
+            tx.commit()?;
             Ok(n > 0)
         })
         .await?;
@@ -92,30 +99,4 @@ pub async fn revoke_device(
         ServerEvent::DeviceRevoked { device_id: id },
     );
     Ok(Json(()))
-}
-
-#[derive(Deserialize)]
-pub struct LookupQuery {
-    email: String,
-}
-
-pub async fn lookup_user(
-    State(state): State<AppState>,
-    _auth: Auth,
-    Query(q): Query<LookupQuery>,
-) -> AppResult<Json<UserPublic>> {
-    let email = normalize_email(&q.email);
-    let user = state.db(move |conn| user_by_email(conn, &email)).await?;
-    user.map(|u| Json(u.public()))
-        .ok_or_else(|| AppError::not_found("no such user"))
-}
-
-pub async fn get_user(
-    State(state): State<AppState>,
-    _auth: Auth,
-    Path(id): Path<Uuid>,
-) -> AppResult<Json<UserPublic>> {
-    let user = state.db(move |conn| db::user_public(conn, &id)).await?;
-    user.map(Json)
-        .ok_or_else(|| AppError::not_found("no such user"))
 }

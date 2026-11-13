@@ -18,6 +18,9 @@ use crate::state::AppState;
 
 pub const ACCESS_TTL_SECS: i64 = 15 * 60;
 pub const REFRESH_TTL_SECS: i64 = 30 * 24 * 3600;
+/// Active devices per account. Every login creates one; past the cap the least recently seen
+/// are signed out, so one account cannot grow the table without bound.
+pub const MAX_DEVICES: i64 = 50;
 
 pub fn new_token() -> AppResult<String> {
     let bytes = random_bytes::<32>().map_err(AppError::internal)?;
@@ -44,6 +47,17 @@ pub fn create_device(conn: &Connection, user_id: &Uuid, device: &NewDevice) -> A
     conn.execute(
         "INSERT INTO devices (id, user_id, name, public_key, created_at, last_seen_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
         params![id.as_bytes().as_slice(), user_id.as_bytes().as_slice(), name, device.public_key.as_slice(), t],
+    )?;
+    let user = user_id.as_bytes().as_slice();
+    conn.execute(
+        "UPDATE devices SET revoked_at = ?1 WHERE id IN (
+             SELECT id FROM devices WHERE user_id = ?2 AND revoked_at IS NULL
+             ORDER BY last_seen_at DESC, created_at DESC LIMIT -1 OFFSET ?3)",
+        params![t, user, MAX_DEVICES],
+    )?;
+    conn.execute(
+        "DELETE FROM sessions WHERE user_id = ?1 AND device_id IN (SELECT id FROM devices WHERE user_id = ?1 AND revoked_at IS NOT NULL)",
+        [user],
     )?;
     Ok(id)
 }

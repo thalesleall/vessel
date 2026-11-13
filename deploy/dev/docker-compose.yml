@@ -20,6 +20,8 @@ services:
       VESSEL_PUBLIC_URL: http://localhost:8080
       VESSEL_SIGNUPS: open
       VESSEL_NAME: Vessel Lab
+      # Local lab only: a fixed installation code for the first account.
+      VESSEL_BOOTSTRAP_TOKEN: lab-installation-code
       RUST_LOG: info,vessel_agent=debug
     ports:
       - "127.0.0.1:8080:8080"

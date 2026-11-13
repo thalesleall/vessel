@@ -637,15 +637,26 @@ impl Vessel {
             server: profile.server_id.as_bytes(),
         };
         let (state, request) = client_registration_start(new_password.as_bytes())?;
+        // The server wants proof of the current password, not just this session.
+        let (login, login_request) = client_login_start(current_password.as_bytes())?;
         let start: PasswordChangeStartResponse = self
             .api()?
             .post(
                 "/v1/account/password/start",
                 &PasswordChangeStartRequest {
                     request: request.into(),
+                    login_request: login_request.into(),
                 },
             )
             .await?;
+        let proof = login
+            .finish(
+                current_password.as_bytes(),
+                start.login_response.as_slice(),
+                &identity,
+                &start.login_kdf,
+            )
+            .map_err(|_| ClientError::WrongPassword)?;
         let (upload, master_kek) = state.finish(
             new_password.as_bytes(),
             start.response.as_slice(),
@@ -662,6 +673,7 @@ impl Vessel {
                     registration_id: start.registration_id,
                     upload: upload.into(),
                     wrapped_account_key_master: Bytes(wrapped.clone()),
+                    login_finalization: proof.finalization.into(),
                 },
             )
             .await?;

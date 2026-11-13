@@ -14,6 +14,7 @@ use vessel_crypto::identity::verify_ed25519;
 use vessel_crypto::opaque::{
     OpaqueIdentity, server_login_start, server_registration_finish, server_registration_start,
 };
+use crate::config::Config;
 use vessel_protocol::*;
 
 use super::client_ip;
@@ -56,15 +57,38 @@ fn validate_email(email: &str) -> AppResult<String> {
     Ok(email)
 }
 
+fn invalid_invite() -> AppError {
+    AppError::new(
+        axum::http::StatusCode::FORBIDDEN,
+        ErrorCode::InvalidInvite,
+        "invite is invalid or expired",
+    )
+}
+
 /// Checks whether a sign-up is allowed. Returns the invite token hash to consume, if any.
 fn signup_allowed(
     conn: &rusqlite::Connection,
-    mode: SignupMode,
+    config: &Config,
     email: &str,
     invite: Option<&str>,
 ) -> AppResult<Option<Vec<u8>>> {
+    let mode = config.signups;
     if db::user_count(conn)? == 0 {
-        return Ok(None);
+        // The first account becomes server admin: it must show the installation code, so
+        // whoever reaches a fresh server first cannot take it over.
+        return match (&config.bootstrap_token, invite) {
+            (None, _) => Ok(None),
+            (Some(code), Some(given))
+                if bool::from(Sha256::digest(code.as_bytes()).ct_eq(&Sha256::digest(given.as_bytes()))) =>
+            {
+                Ok(None)
+            }
+            _ => Err(AppError::new(
+                axum::http::StatusCode::FORBIDDEN,
+                ErrorCode::InvalidInvite,
+                "the first account needs the installation code from the server log",
+            )),
+        };
     }
     if let Some(token) = invite {
         let hash = hash_token(token);
@@ -89,6 +113,7 @@ fn signup_allowed(
             // by the sign-up (accepted_by = the new user, who can then accept it into the vault)
             // and only while its vault still exists.
             if let Some(vault_id) = vault
+                && config.vault_invite_signups
                 && accepted.is_none()
                 && expires > now()
                 && email_ok
@@ -104,11 +129,7 @@ fn signup_allowed(
                 }
             }
         }
-        return Err(AppError::new(
-            axum::http::StatusCode::FORBIDDEN,
-            ErrorCode::InvalidInvite,
-            "invite is invalid or expired",
-        ));
+        return Err(invalid_invite());
     }
     match mode {
         SignupMode::Open => Ok(None),
@@ -128,13 +149,14 @@ pub async fn register_start(
 ) -> AppResult<Json<RegisterStartResponse>> {
     state.check_rate(client_ip(&state, &headers, &peer))?;
     let email = validate_email(&req.email)?;
-    let mode = state.config.signups;
+    state.check_account_rate(&email)?;
+    let config = state.config.clone();
     let invite = req.invite_token.clone();
     let email2 = email.clone();
     state
         .db(move |conn| {
             // Admission first, so a closed server does not reveal which e-mails have accounts.
-            signup_allowed(conn, mode, &email2, invite.as_deref())?;
+            signup_allowed(conn, &config, &email2, invite.as_deref())?;
             if user_by_email(conn, &email2)?.is_some() {
                 return Err(AppError::conflict(
                     "an account with this e-mail already exists",
@@ -173,7 +195,7 @@ pub async fn register_finish(
         return Err(AppError::bad_request("not a sign-up"));
     };
     let password_file = server_registration_finish(req.upload.as_slice())?;
-    let mode = state.config.signups;
+    let config = state.config.clone();
 
     let response = state
         .db(move |conn| {
@@ -182,7 +204,7 @@ pub async fn register_finish(
                 return Err(AppError::conflict("an account with this e-mail already exists"));
             }
             let first = db::user_count(&tx)? == 0;
-            let invite_hash = signup_allowed(&tx, mode, &email, invite_token.as_deref())?;
+            let invite_hash = signup_allowed(&tx, &config, &email, invite_token.as_deref())?;
             let a = &req.account;
             tx.execute(
                 "INSERT INTO users (id, email, password_file, kdf, public_kem, public_sign, wrapped_ak_master,
@@ -230,6 +252,7 @@ pub async fn login_start(
 ) -> AppResult<Json<LoginStartResponse>> {
     state.check_rate(client_ip(&state, &headers, &peer))?;
     let email = normalize_email(&req.email);
+    state.check_account_rate(&email)?;
     let email2 = email.clone();
     let user = state.db(move |conn| user_by_email(conn, &email2)).await?;
 
@@ -364,11 +387,31 @@ pub async fn logout(
 // Password change (authenticated) and recovery (with the recovery key)
 // ---------------------------------------------------------------------------------------------
 
+/// Changing the password needs the current one (an OPAQUE login run alongside the new
+/// registration), not just a session: a stolen access token must not become a permanent login.
 pub async fn password_start(
     State(state): State<AppState>,
     auth: Auth,
     Json(req): Json<PasswordChangeStartRequest>,
 ) -> AppResult<Json<PasswordChangeStartResponse>> {
+    state.check_account_rate(&auth.user_id.to_string())?;
+    let user_id = auth.user_id;
+    let user = state
+        .db(move |conn| user_by_id(conn, &user_id))
+        .await?
+        .ok_or_else(AppError::unauthorized)?;
+    let server_id = state.config.server_id();
+    let identity = OpaqueIdentity {
+        user: user.email.as_bytes(),
+        server: server_id.as_bytes(),
+    };
+    let (login, login_response) = server_login_start(
+        &state.setup,
+        Some(&user.password_file),
+        req.login_request.as_slice(),
+        user.id.as_bytes(),
+        &identity,
+    )?;
     let response = server_registration_start(
         &state.setup,
         req.request.as_slice(),
@@ -376,11 +419,14 @@ pub async fn password_start(
     )?;
     let registration_id = state.put_registration(Registration::PasswordChange {
         user_id: auth.user_id,
+        login,
     })?;
     Ok(Json(PasswordChangeStartResponse {
         registration_id,
         response: response.into(),
         kdf: KdfParams::default(),
+        login_response: login_response.into(),
+        login_kdf: user.kdf,
     }))
 }
 
@@ -389,13 +435,28 @@ pub async fn password_finish(
     auth: Auth,
     Json(req): Json<PasswordChangeFinishRequest>,
 ) -> AppResult<Json<()>> {
-    let Registration::PasswordChange { user_id } = state.take_registration(&req.registration_id)?
+    let Registration::PasswordChange { user_id, login } =
+        state.take_registration(&req.registration_id)?
     else {
         return Err(AppError::bad_request("not a password change"));
     };
     if user_id != auth.user_id {
         return Err(AppError::forbidden("registration belongs to another user"));
     }
+    let email = state
+        .db(move |conn| Ok(user_by_id(conn, &user_id)?.map(|u| u.email)))
+        .await?
+        .ok_or_else(AppError::unauthorized)?;
+    let server_id = state.config.server_id();
+    login
+        .finish(
+            req.login_finalization.as_slice(),
+            &OpaqueIdentity {
+                user: email.as_bytes(),
+                server: server_id.as_bytes(),
+            },
+        )
+        .map_err(|_| AppError::unauthorized())?;
     let password_file = server_registration_finish(req.upload.as_slice())?;
     state
         .db(move |conn| {
@@ -429,6 +490,7 @@ pub async fn recovery_start(
 ) -> AppResult<Json<RecoveryStartResponse>> {
     state.check_rate(client_ip(&state, &headers, &peer))?;
     let email = normalize_email(&req.email);
+    state.check_account_rate(&email)?;
     let user = state
         .db(move |conn| user_by_email(conn, &email))
         .await?

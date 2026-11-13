@@ -1,3 +1,15 @@
+{
+	servers {
+		# Slow clients cannot hold connections open: headers and bodies must arrive in time.
+		# The event WebSocket is long-lived but keeps pinging, so the idle limit does not cut it.
+		timeouts {
+			read_header 10s
+			read_body 60s
+			idle 5m
+		}
+	}
+}
+
 {$VESSEL_DOMAIN} {
 	encode zstd gzip
 	header {

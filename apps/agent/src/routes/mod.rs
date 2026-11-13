@@ -11,6 +11,10 @@ use axum::Router;
 use axum::extract::{ConnectInfo, DefaultBodyLimit};
 use axum::http::HeaderMap;
 use axum::routing::{delete, get, post, put};
+use std::time::Duration;
+
+use axum::http::StatusCode;
+use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
@@ -37,12 +41,11 @@ pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/server/info", get(account::server_info))
         .merge(auth_routes)
-        // Account, devices, users
+        // Account and devices. There is deliberately no user directory: members' keys come
+        // with the vaults they share, so nobody can enumerate the accounts of a hosted server.
         .route("/account", get(account::get_account))
         .route("/devices", get(account::list_devices))
         .route("/devices/{id}", delete(account::revoke_device))
-        .route("/users/lookup", get(account::lookup_user))
-        .route("/users/{id}", get(account::get_user))
         // Vaults
         .route("/vaults", get(vaults::list).post(vaults::create))
         .route(
@@ -65,6 +68,9 @@ pub fn router(state: AppState) -> Router {
         // Invites
         .route("/admin/invites", post(invites::create_signup_invite))
         .route("/invites/{token}/accept", post(invites::accept))
+        // Every request must finish in time: slow clients cannot hold handlers (and the
+        // database) indefinitely. The event socket is upgraded first, so it is not cut off.
+        .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(60)))
         // Real time
         .route("/events", get(events::ws));
 

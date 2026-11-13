@@ -229,7 +229,11 @@ pub const REFRESH_SKEW_SECS: i64 = 300;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PasswordChangeStartRequest {
+    /// OPAQUE registration request for the new password.
     pub request: Bytes,
+    /// OPAQUE login request with the current password: a stolen access token alone cannot
+    /// replace the password.
+    pub login_request: Bytes,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -237,6 +241,8 @@ pub struct PasswordChangeStartResponse {
     pub registration_id: Uuid,
     pub response: Bytes,
     pub kdf: KdfParams,
+    pub login_response: Bytes,
+    pub login_kdf: KdfParams,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -244,6 +250,8 @@ pub struct PasswordChangeFinishRequest {
     pub registration_id: Uuid,
     pub upload: Bytes,
     pub wrapped_account_key_master: Bytes,
+    /// Completes the login started with `login_request`.
+    pub login_finalization: Bytes,
 }
 
 /// Forgotten password: prove possession of the recovery key, then re-register OPAQUE.

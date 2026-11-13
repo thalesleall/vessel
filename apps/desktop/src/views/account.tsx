@@ -183,6 +183,11 @@ function ConnectServer(props: { onClose: () => void; onDone: (o: MigrationOutcom
                 <input class="mono" value={invite()} onInput={(e) => setInvite(e.currentTarget.value.trim().split("/").pop() ?? "")} />
               </Field>
             </Show>
+            <Show when={info()!.first_user}>
+              <Field label="Código de instalação" hint="Primeira conta do servidor: o código aparece no log do agente ao iniciar.">
+                <input class="mono" value={invite()} onInput={(e) => setInvite(e.currentTarget.value.trim())} required />
+              </Field>
+            </Show>
             <div class="callout callout-info"><Icon name="key" size={16} />
               <span>Você vai receber uma chave de recuperação nova. A atual deixa de valer.</span>
             </div>

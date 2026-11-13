@@ -24,6 +24,16 @@ pub struct Config {
     pub trust_proxy: usize,
     /// `VESSEL_AUTH_RATE_PER_MIN`, default 30. Auth requests per client IP per minute.
     pub auth_rate_per_min: u32,
+    /// `VESSEL_BOOTSTRAP_TOKEN`: code the first account must present, so whoever reaches a
+    /// fresh server first cannot become its admin. Generated and logged at start when unset.
+    /// `None` only in tests.
+    pub bootstrap_token: Option<String>,
+    /// Whether `bootstrap_token` was generated (and must be shown in the log).
+    pub bootstrap_generated: bool,
+    /// `VESSEL_VAULT_INVITE_SIGNUPS`, default `true`: a vault invite also admits a new account
+    /// on an invite-only server. Set `false` on a hosted service where accounts are sold, so
+    /// only server invites (or open sign-ups) create accounts.
+    pub vault_invite_signups: bool,
 }
 
 impl Config {
@@ -36,6 +46,14 @@ impl Config {
             other => bail!("VESSEL_SIGNUPS must be open, invite-only or disabled, got {other:?}"),
         };
         let public_url = var("VESSEL_PUBLIC_URL").context("VESSEL_PUBLIC_URL is required")?;
+        let (bootstrap_token, bootstrap_generated) = match var("VESSEL_BOOTSTRAP_TOKEN") {
+            Some(t) if t.trim().len() >= 16 => (t.trim().to_string(), false),
+            Some(_) => bail!("VESSEL_BOOTSTRAP_TOKEN must have at least 16 characters"),
+            None => (
+                crate::auth::new_token().map_err(|e| anyhow::anyhow!("{e:?}"))?,
+                true,
+            ),
+        };
         Ok(Self {
             bind: var("VESSEL_BIND").unwrap_or_else(|| "0.0.0.0:8080".into()),
             public_url: public_url.trim_end_matches('/').to_string(),
@@ -56,6 +74,10 @@ impl Config {
                 .transpose()
                 .context("VESSEL_AUTH_RATE_PER_MIN")?
                 .unwrap_or(30),
+            bootstrap_token: Some(bootstrap_token),
+            bootstrap_generated,
+            vault_invite_signups: var("VESSEL_VAULT_INVITE_SIGNUPS")
+                .is_none_or(|v| v != "false" && v != "0"),
         })
     }
 
@@ -69,6 +91,9 @@ impl Config {
             name: "Vessel test".into(),
             trust_proxy: 0,
             auth_rate_per_min: 10_000,
+            bootstrap_token: None,
+            bootstrap_generated: false,
+            vault_invite_signups: true,
         }
     }
 

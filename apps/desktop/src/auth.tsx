@@ -298,6 +298,9 @@ export function Connect(props: { onBack?: () => void }) {
                 </Show>
                 <Show when={mode() === "signup" && info()!.first_user}>
                   <div class="callout callout-info"><Icon name="shield" size={16} />Esta é a primeira conta do servidor, então ela será a administradora.</div>
+                  <Field label="Código de instalação" hint="Aparece no log do agente ao iniciar (ou é o valor de VESSEL_BOOTSTRAP_TOKEN).">
+                    <input class="mono" value={invite()} onInput={(e) => setInvite(e.currentTarget.value.trim())} required />
+                  </Field>
                 </Show>
                 <Show when={mode() !== "login"}>
                   <div class="callout callout-warn"><Icon name="alert" size={16} />
