@@ -454,7 +454,7 @@ volumes: { pgdata: {} }
 ```
 
 - TLS fica no reverse proxy (Caddy ou Traefik). O agente também aceita certificado próprio.
-- Backup = dump do banco. Como tudo está cifrado, o backup pode ir para storage não confiável.
+- Backup = dump do banco. **Ele não pode ir para storage não confiável:** os registros estão cifrados, mas o banco também guarda o segredo OPAQUE do servidor (`server_meta.opaque_setup`) ao lado dos arquivos de senha. Com os dois, quem tiver o backup testa senhas offline contra todas as contas. Além disso, há metadados em claro: e-mails, nomes de dispositivos, membros e papéis dos cofres, datas e tamanhos. Cifre o backup com uma chave guardada fora dele.
 - Rate limit no login e no cadastro. O primeiro usuário cadastrado vira administrador do servidor.
 
 ---
