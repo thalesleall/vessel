@@ -165,3 +165,33 @@ async fn unsent_edits_of_a_deleted_vault_are_kept() {
         |i| i.vault_id == personal && matches!(&i.entity, Entity::Host(h) if h.label == "unsent")
     ));
 }
+
+/// What one device verified reaches the account's other devices through the personal vault.
+#[tokio::test]
+async fn verified_keys_and_histories_reach_new_devices() {
+    let url = agent_with(|_| {}).await;
+    let mut owner = signup(&url, "owner@example.com").await;
+    let mut bob = signup(&url, "bob@example.com").await;
+    let vault = share(&mut owner, &mut bob, "Time", Role::Editor).await;
+    owner.sync().await.unwrap();
+
+    let trust = |v: &Vessel| {
+        v.items(Some(vessel_client::model::EntityKind::Trust))
+            .unwrap()
+            .into_iter()
+            .find_map(|i| match i.entity {
+                Entity::Trust(t) => Some(t),
+                _ => None,
+            })
+    };
+    let t = trust(&owner).expect("no trust record after sync");
+    assert!(t.users.contains_key(&bob.status().user_id.unwrap()));
+    assert!(t.anchors.get(&vault).is_some_and(|a| a.seq >= 2));
+
+    // A new device of the owner gets it and syncs the shared vault against it.
+    let mut laptop = Vessel::in_memory().unwrap();
+    laptop.login(&url, "owner@example.com", PW, "laptop").await.unwrap();
+    laptop.sync().await.unwrap();
+    assert!(trust(&laptop).is_some());
+    assert!(laptop.vaults().unwrap().iter().any(|v| v.id == vault));
+}

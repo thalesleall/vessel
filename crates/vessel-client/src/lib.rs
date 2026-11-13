@@ -11,6 +11,7 @@ mod items;
 mod local;
 mod store;
 mod sync;
+mod trust;
 mod vaults;
 
 use std::collections::{BTreeMap, HashMap};
@@ -46,10 +47,10 @@ use crate::api::Api;
 use crate::store::Store;
 
 const PROFILE_KEY: &str = "profile";
-const PINS_KEY: &str = "pins";
+pub(crate) const PINS_KEY: &str = "pins";
 /// E-mail -> user id of every pinned user: a second account claiming an e-mail already pinned
 /// to someone else is refused (a server substituting a person with an account it controls).
-const PIN_EMAILS_KEY: &str = "pin_emails";
+pub(crate) const PIN_EMAILS_KEY: &str = "pin_emails";
 
 /// What a signed-in device remembers about its account. Secrets inside are sealed.
 #[derive(Clone, Serialize, Deserialize)]
@@ -211,7 +212,7 @@ impl Vessel {
         Ok(self.profile()?.user_id)
     }
 
-    fn pins(&self) -> Result<BTreeMap<Uuid, UserPublicKeys>> {
+    pub(crate) fn pins(&self) -> Result<BTreeMap<Uuid, UserPublicKeys>> {
         Ok(self.store.get(PINS_KEY)?.unwrap_or_default())
     }
 

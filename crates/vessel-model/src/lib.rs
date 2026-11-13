@@ -30,6 +30,7 @@ pub enum Entity {
     TerminalProfile(TerminalProfile),
     Workspace(Workspace),
     Settings(Settings),
+    Trust(Trust),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -46,6 +47,7 @@ pub enum EntityKind {
     TerminalProfile,
     Workspace,
     Settings,
+    Trust,
 }
 
 impl Entity {
@@ -62,6 +64,7 @@ impl Entity {
             Self::TerminalProfile(_) => EntityKind::TerminalProfile,
             Self::Workspace(_) => EntityKind::Workspace,
             Self::Settings(_) => EntityKind::Settings,
+            Self::Trust(_) => EntityKind::Trust,
         }
     }
 
@@ -80,6 +83,7 @@ impl Entity {
             Self::TerminalProfile(v) => &v.label,
             Self::Workspace(v) => &v.label,
             Self::Settings(_) => "Settings",
+            Self::Trust(_) => "Trust",
         }
     }
 
@@ -292,6 +296,37 @@ pub struct Workspace {
     pub tabs: Vec<WorkspaceTab>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// What this account's devices verified about other people (their keys) and about vault
+/// histories (how far each was verified), kept in the personal vault so a new device starts from
+/// it instead of trusting the server's word. Only the app writes it; agents cannot.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Trust {
+    pub users: BTreeMap<Uuid, TrustedUser>,
+    pub anchors: BTreeMap<Uuid, TrustAnchor>,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TrustedUser {
+    pub email: String,
+    /// Public keys, hex.
+    pub kem: String,
+    pub sign: String,
+}
+
+/// A verified point in a vault's membership history.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TrustAnchor {
+    pub seq: u64,
+    /// Hash chain head after event `seq - 1`, hex.
+    pub head: String,
+    pub creator: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

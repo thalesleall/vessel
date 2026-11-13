@@ -177,8 +177,10 @@ impl Vessel {
                 }
             }
         }
-        if let Some(kind) = kind {
-            out.retain(|i| i.entity.kind() == kind);
+        match kind {
+            Some(kind) => out.retain(|i| i.entity.kind() == kind),
+            // The trust record is the app's own bookkeeping: only listed when asked for.
+            None => out.retain(|i| i.entity.kind() != EntityKind::Trust),
         }
         out.sort_by(|a, b| {
             a.entity

@@ -229,7 +229,16 @@ impl Vessel {
             .map(|u| (*u.user_id.as_bytes(), u.public_keys))
             .collect();
 
-        let anchor = self.cached_membership(&vault_id)?;
+        let mut anchor = self.cached_membership(&vault_id)?;
+        // A new device starts from what the user's other devices verified (trust record).
+        if let Some(t) = self.trusted_anchor(&vault_id)?
+            && t.seq > anchor.anchor_seq
+            && let Some(head) = crate::trust::anchor_head(&t)
+        {
+            anchor.anchor_seq = t.seq;
+            anchor.anchor_head = Some(head);
+            anchor.creator = t.creator.or(anchor.creator);
+        }
         if anchor.anchor_seq > response.events.len() as u64 {
             return Err(ClientError::invalid(
                 "the server returned a shorter membership history than the one already verified",

@@ -32,7 +32,10 @@ impl Vessel {
             self.resume_import()?;
             return Ok(report);
         }
-        let remote: Vec<VaultSummary> = self.api()?.get("/v1/vaults").await?;
+        let mut remote: Vec<VaultSummary> = self.api()?.get("/v1/vaults").await?;
+        // The personal vault first: its trust record vouches for the keys and histories of
+        // the others. (The server's personal flag only orders; it is verified as usual.)
+        remote.sort_by_key(|v| !v.personal);
         let remote_ids: BTreeSet<Uuid> = remote.iter().map(|v| v.vault_id).collect();
         for local in self.store.vaults()? {
             if !remote_ids.contains(&local.vault_id) {
@@ -58,6 +61,9 @@ impl Vessel {
             }
             report.vaults += 1;
             report.pulled += self.pull_vault(vault).await?;
+            if self.personal_vault().is_ok_and(|p| p == vault) {
+                self.absorb_trust()?;
+            }
             let (pushed, conflicts) = self.push_vault(vault).await?;
             report.pushed += pushed;
             report.conflicts += conflicts;
@@ -86,6 +92,9 @@ impl Vessel {
             let (pushed, conflicts) = self.push_vault(personal).await?;
             report.pushed += pushed;
             report.conflicts += conflicts;
+        }
+        if let Err(e) = self.publish_trust().await {
+            tracing::warn!("could not save the trust record: {e}");
         }
         self.persist_session().await?;
         Ok(report)

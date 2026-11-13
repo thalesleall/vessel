@@ -74,7 +74,8 @@ export async function refreshData() {
   if (!s?.unlocked) return;
   try {
     const [i, v, t] = await Promise.all([api.items(), api.vaults(), api.terminals()]);
-    setItems(i);
+    // The trust record is the app's own bookkeeping, not something to show or edit.
+    setItems(i.filter((x) => (x.entity.type as string) !== "trust"));
     setVaults(v);
     setSessions(t);
   } catch (e) {

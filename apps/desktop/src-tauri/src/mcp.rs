@@ -847,7 +847,8 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
             let items = state.vessel.lock().await.items(kind).map_err(err)?;
             let out: Vec<Value> = items
                 .iter()
-                .filter(|i| i.entity.kind() != EntityKind::VaultMeta)
+                // Trust records only matter to the app's own key checks.
+                .filter(|i| !matches!(i.entity.kind(), EntityKind::VaultMeta | EntityKind::Trust))
                 .filter(|i| vault.is_none_or(|v| v == i.vault_id))
                 .map(item_json)
                 .filter(|v| {
@@ -866,6 +867,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                 .await
                 .find(id)
                 .map_err(err)?
+                .filter(|i| i.entity.kind() != EntityKind::Trust)
                 .ok_or("item not found")?;
             Ok(item_json(&item))
         }
