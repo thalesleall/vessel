@@ -442,6 +442,24 @@ pub async fn change_membership(
                     let role = body
                         .role
                         .ok_or_else(|| AppError::bad_request("missing role"))?;
+                    let before: Option<i64> = tx
+                        .query_row(
+                            "SELECT role FROM vault_members WHERE vault_id = ?1 AND user_id = ?2",
+                            params![id.as_bytes().as_slice(), subject.as_bytes().as_slice()],
+                            |r| r.get(0),
+                        )
+                        .optional()?;
+                    // A demoted manager signed the current key's grants: clients accept new key
+                    // versions only from current managers, so the vault rotates to one.
+                    if before
+                        .and_then(|r| crate::db::role_from(r).ok())
+                        .is_some_and(|r| r.can_manage() && !role.can_manage())
+                    {
+                        tx.execute(
+                            "UPDATE vaults SET rotation_due = 1 WHERE id = ?1",
+                            [id.as_bytes().as_slice()],
+                        )?;
+                    }
                     tx.execute(
                         "UPDATE vault_members SET role = ?1 WHERE vault_id = ?2 AND user_id = ?3",
                         params![

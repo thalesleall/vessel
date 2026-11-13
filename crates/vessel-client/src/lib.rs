@@ -44,6 +44,9 @@ use crate::store::Store;
 
 const PROFILE_KEY: &str = "profile";
 const PINS_KEY: &str = "pins";
+/// E-mail -> user id of every pinned user: a second account claiming an e-mail already pinned
+/// to someone else is refused (a server substituting a person with an account it controls).
+const PIN_EMAILS_KEY: &str = "pin_emails";
 
 /// What a signed-in device remembers about its account. Secrets inside are sealed.
 #[derive(Clone, Serialize, Deserialize)]
@@ -205,6 +208,20 @@ impl Vessel {
 
     /// Trust-on-first-use pinning of other users' public keys.
     fn check_pin(&self, user: &UserPublic) -> Result<()> {
+        let mut emails: BTreeMap<String, Uuid> = self.store.get(PIN_EMAILS_KEY)?.unwrap_or_default();
+        let email = normalize_email(&user.email);
+        match emails.get(&email) {
+            Some(id) if *id != user.user_id => {
+                return Err(ClientError::KeyChanged {
+                    email: user.email.clone(),
+                });
+            }
+            Some(_) => {}
+            None => {
+                emails.insert(email, user.user_id);
+                self.store.set(PIN_EMAILS_KEY, &emails)?;
+            }
+        }
         let mut pins = self.pins()?;
         match pins.get(&user.user_id) {
             Some(pinned) if *pinned != user.public_keys => Err(ClientError::KeyChanged {
@@ -277,7 +294,7 @@ impl Vessel {
             password.as_bytes(),
             start.response.as_slice(),
             &identity,
-            &start.kdf,
+            &KdfParams::default(),
         )?;
         let (material, account, recovery) = create_account(&master_kek)?;
         let (personal_vault, _vk) =
@@ -355,6 +372,8 @@ impl Vessel {
                 }),
             )
             .await?;
+        // The server hands back the account's parameters: never weaker than this client's default.
+        start.kdf.validate_account()?;
         let out = state
             .finish(
                 password.as_bytes(),
@@ -422,7 +441,7 @@ impl Vessel {
             new_password.as_bytes(),
             start.response.as_slice(),
             &identity,
-            &start.kdf,
+            &KdfParams::default(),
         )?;
         let device_key = DeviceKey::generate()?;
         let auth: AuthResponse = api
@@ -471,6 +490,17 @@ impl Vessel {
                 "server returned keys that do not match this account",
             ));
         }
+        // Signing in again to the same account on the same server keeps what was already
+        // verified about other people's keys.
+        let kept = match &self.profile {
+            Some(p) if p.user_id == auth.user_id && p.server_id == info.server_id => Some((
+                self.pins()?,
+                self.store
+                    .get::<BTreeMap<String, Uuid>>(PIN_EMAILS_KEY)?
+                    .unwrap_or_default(),
+            )),
+            _ => None,
+        };
         self.store.wipe()?;
         let secrets = DeviceSecrets {
             device_seed: device_key.seed().to_vec(),
@@ -500,10 +530,10 @@ impl Vessel {
         )
         .await;
         self.store.set(PROFILE_KEY, &profile)?;
-        self.store.set(
-            PINS_KEY,
-            &BTreeMap::from([(auth.user_id, account.keys.public())]),
-        )?;
+        let (mut pins, emails) = kept.unwrap_or_default();
+        pins.insert(auth.user_id, account.keys.public());
+        self.store.set(PINS_KEY, &pins)?;
+        self.store.set(PIN_EMAILS_KEY, &emails)?;
         self.profile = Some(profile);
         self.api = Some(api);
         self.unlocked = Some(Unlocked {
@@ -649,6 +679,7 @@ impl Vessel {
                 },
             )
             .await?;
+        start.login_kdf.validate_account()?;
         let proof = login
             .finish(
                 current_password.as_bytes(),
@@ -661,7 +692,7 @@ impl Vessel {
             new_password.as_bytes(),
             start.response.as_slice(),
             &identity,
-            &start.kdf,
+            &KdfParams::default(),
         )?;
         let account = &self.unlocked()?.account;
         let wrapped = rewrap_for_master(account, &master_kek)?;

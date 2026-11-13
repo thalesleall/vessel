@@ -72,7 +72,16 @@ function VaultDetail(props: { vault: VaultView; onClosed: () => void }) {
     if (r) setInvite(r);
   };
   const approve = async (userId: string, email: string, fp: string) => {
-    if (!(await confirmAction(`Aprovar ${email}?\n\nConfirme com a pessoa, por outro canal, que a impressão digital dela é:\n${fp}`, false))) return;
+    // The server could put an account it controls in the pending list: the fingerprint, read
+    // out by the person over another channel, is what proves who gets the vault key.
+    if (!(await confirmAction({
+      title: `Aprovar ${email}?`,
+      message: "Peça à pessoa, por outro canal (ligação, mensagem), a impressão digital que aparece para ela em Cofres e times, e digite abaixo. Só aprove se for igual.",
+      expect: fp,
+      expectLabel: "Impressão digital informada pela pessoa",
+      confirm: "Aprovar",
+      danger: false,
+    }))) return;
     await attempt(() => api.approveMember(props.vault.id, userId), `${email} agora tem acesso`);
     refetch();
   };

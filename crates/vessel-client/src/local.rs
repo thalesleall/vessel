@@ -138,7 +138,7 @@ impl Vessel {
             password.as_bytes(),
             start.response.as_slice(),
             &identity,
-            &start.kdf,
+            &KdfParams::default(),
         )?;
 
         let account_ref = &self.unlocked()?.account;

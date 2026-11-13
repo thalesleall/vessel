@@ -175,3 +175,14 @@ fn substituted_public_keys_are_detected() {
         CryptoError::InvalidKey
     );
 }
+
+#[test]
+fn account_kdf_params_cannot_be_weaker_than_the_client_default() {
+    use vessel_crypto::kdf::KdfParams;
+    KdfParams::default().validate_account().unwrap();
+    // Above OWASP's floor, but cheaper than what this client registers with.
+    assert!(KdfParams::MINIMUM.validate_account().is_err());
+    let mut p = KdfParams::default();
+    p.iterations -= 1;
+    assert!(p.validate_account().is_err());
+}

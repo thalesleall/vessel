@@ -216,26 +216,37 @@ export function Badge(props: ParentProps<{ tone?: "blue" | "green" | "amber" | "
 }
 
 /** Confirm dialog returning a promise. Pass a string, or a title, message and button label. */
-type ConfirmOptions = { title?: string; message: string; confirm?: string; danger?: boolean };
+type ConfirmOptions = { title?: string; message: string; confirm?: string; danger?: boolean;
+  /** Text the user must type to enable the button (compared ignoring case, spaces and dashes). */
+  expect?: string; expectLabel?: string };
+const normalizeTyped = (s: string) => s.toLowerCase().replace(/[^0-9a-z]/g, "");
 const [confirmState, setConfirmState] = createSignal<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(null);
 export function confirmAction(what: string | ConfirmOptions, danger = true): Promise<boolean> {
   const opts: ConfirmOptions = typeof what === "string" ? { message: what, danger } : what;
   return new Promise((resolve) => setConfirmState({ ...opts, resolve }));
 }
 export function ConfirmHost() {
+  const [typed, setTyped] = createSignal("");
   const close = (v: boolean) => {
     confirmState()?.resolve(v);
     setConfirmState(null);
+    setTyped("");
   };
+  const matches = () => { const e = confirmState()?.expect; return !e || normalizeTyped(typed()) === normalizeTyped(e); };
   return (
     <Show when={confirmState()}>
       {(c) => (
         <Modal title={c().title ?? "Confirmar"} onClose={() => close(false)}
           footer={<>
             <Button onClick={() => close(false)}>Cancelar</Button>
-            <Button variant={c().danger === false ? "primary" : "danger"} onClick={() => close(true)}>{c().confirm ?? "Confirmar"}</Button>
+            <Button variant={c().danger === false ? "primary" : "danger"} disabled={!matches()} onClick={() => matches() && close(true)}>{c().confirm ?? "Confirmar"}</Button>
           </>}>
           <p class="confirm-text">{c().message}</p>
+          <Show when={c().expect}>
+            <Field label={c().expectLabel ?? "Digite para confirmar"}>
+              <input class="mono" value={typed()} onInput={(e) => setTyped(e.currentTarget.value)} aria-invalid={typed() !== "" && !matches()} autofocus />
+            </Field>
+          </Show>
         </Modal>
       )}
     </Show>

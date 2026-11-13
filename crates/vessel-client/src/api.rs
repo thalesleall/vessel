@@ -44,6 +44,9 @@ impl Api {
         let http = reqwest::Client::builder()
             .user_agent(concat!("vessel/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
+            // A redirect could downgrade to plain http or resend a refresh token's body to
+            // another host: the API never redirects, so none is followed.
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(60))
             .build()?;
         Ok(Self {

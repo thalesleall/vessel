@@ -55,6 +55,18 @@ impl KdfParams {
         Ok(())
     }
 
+    /// Parameters for an account password on a sync server. The server stores them and hands
+    /// them back at login, so they are checked against this client's own default: a hostile
+    /// server cannot make offline guessing of the password cheaper than that.
+    pub fn validate_account(&self) -> Result<()> {
+        self.validate()?;
+        let d = Self::default();
+        if self.memory_kib < d.memory_kib || self.iterations < d.iterations {
+            return Err(CryptoError::WeakKdfParams);
+        }
+        Ok(())
+    }
+
     pub(crate) fn argon2_params(&self) -> Result<Params> {
         self.validate()?;
         Params::new(

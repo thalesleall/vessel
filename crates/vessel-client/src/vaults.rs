@@ -297,15 +297,36 @@ impl Vessel {
             .api()?
             .get(&format!("/v1/vaults/{vault_id}/grants"))
             .await?;
-        let trusted = self.cached_membership(&vault_id)?.ever_managers;
+        let membership = self.cached_membership(&vault_id)?;
         for granter in &response.granters {
             self.check_pin(granter)?;
         }
-        response
-            .grants
-            .retain(|g| trusted.contains(&Uuid::from_bytes(g.granter_id)));
         let me = self.user_id()?;
         let unlocked = self.unlocked.as_mut().ok_or(ClientError::Locked)?;
+        // Former managers signed the grants of the key versions they created, so those stay
+        // valid. A new key version must come from someone who manages the vault now: otherwise a
+        // removed or demoted manager (with the server's help) could hand out a key they know.
+        let current = |g: &Uuid| membership.roles.get(g).is_some_and(|r| r.can_manage());
+        let held = unlocked
+            .vault_keys
+            .keys()
+            .filter(|(v, _)| *v == vault_id)
+            .map(|(_, kv)| *kv)
+            .max()
+            .unwrap_or(0);
+        let ceiling = response
+            .grants
+            .iter()
+            .filter(|g| current(&Uuid::from_bytes(g.granter_id)))
+            .map(|g| g.key_version)
+            .max()
+            .unwrap_or(0)
+            .max(held);
+        response.grants.retain(|g| {
+            let granter = Uuid::from_bytes(g.granter_id);
+            membership.ever_managers.contains(&granter)
+                && (current(&granter) || g.key_version <= ceiling)
+        });
         open_grants(unlocked, me, vault_id, &response);
         self.store
             .set_vault_blob(&vault_id, VaultColumn::Grants, &response)?;

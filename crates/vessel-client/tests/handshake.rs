@@ -94,3 +94,35 @@ async fn password_change_still_works_with_the_proof() {
         .await
         .unwrap();
 }
+
+/// A demoted manager signed the current key's grants, and clients accept new key versions only
+/// from current managers: demotion rotates the vault key on the next manager sync.
+#[tokio::test]
+async fn demoting_a_manager_rotates_the_vault_key() {
+    let url = agent_with(|_| {}).await;
+    let mut owner = signup(&url, "owner@example.com", None).await;
+    let mut bob = signup(&url, "bob@example.com", None).await;
+    let vault = owner.create_vault("Time").await.unwrap();
+    let invite = owner.invite(vault, Role::Admin, None).await.unwrap();
+    bob.accept_invite(&invite.url).await.unwrap();
+    let bob_id = bob.status().user_id.unwrap();
+    owner.approve_member(vault, bob_id).await.unwrap();
+    bob.sync().await.unwrap();
+    owner.sync().await.unwrap();
+    let version = |v: &Vessel| {
+        v.vaults()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.id == vault)
+            .unwrap()
+            .key_version
+    };
+    let before = version(&owner);
+
+    owner.change_role(vault, bob_id, Role::Editor).await.unwrap();
+    owner.sync().await.unwrap();
+    assert_eq!(version(&owner), before + 1, "no fresh key after demoting a manager");
+    // Bob, still a member, gets the new key from the owner (a current manager).
+    bob.sync().await.unwrap();
+    assert_eq!(version(&bob), before + 1);
+}

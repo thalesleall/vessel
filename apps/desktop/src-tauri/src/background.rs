@@ -81,12 +81,21 @@ async fn events_loop(state: AppState) {
         let revoked = Arc::new(AtomicBool::new(false));
         let flag = revoked.clone();
         let notify = state.sync_now.clone();
+        let me = state.vessel.lock().await.status().device_id;
         let _ = events::listen(&server, &token, move |event| match event {
-            ServerEvent::DeviceRevoked { .. } => flag.store(true, Ordering::Relaxed),
+            ServerEvent::DeviceRevoked { device_id } if Some(device_id) == me => {
+                flag.store(true, Ordering::Relaxed)
+            }
+            ServerEvent::DeviceRevoked { .. } => {}
             _ => notify.notify_one(),
         })
         .await;
-        if revoked.load(Ordering::Relaxed) {
+        // An event alone does not wipe this device: the server must also refuse its session.
+        let confirmed = revoked.load(Ordering::Relaxed) && {
+            let mut vessel = state.vessel.lock().await;
+            matches!(vessel.devices().await, Err(e) if e.is_unauthorized())
+        };
+        if confirmed {
             state.terms.close_all();
             state.forwards.stop_all();
             let _ = state.vessel.lock().await.forget();
