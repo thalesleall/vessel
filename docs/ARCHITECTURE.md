@@ -532,6 +532,7 @@ O app desktop embute um servidor **MCP** (Model Context Protocol) para que agent
 - Para clientes que só falam stdio existe a ponte `vessel-mcp` (`apps/mcp-bridge`), configurada com `VESSEL_MCP_URL` e `VESSEL_MCP_TOKEN`.
 - Toda chamada aparece no app (Agentes de IA → Atividade), e as sessões abertas por agentes recebem o selo "IA" na aba.
 - Duas chaves no app: **permitir edições** e **permitir digitar nos terminais**.
+- Com "digitar" desligado, o agente ainda abre e lê terminais, mas nada que execute comandos sozinho: só shells embutidos sem argumentos nem variáveis de ambiente (sem `custom`, sem perfis com `args`/`env`), e nenhum host com "Snippet ao conectar".
 
 ### 14.2 O que os agentes podem fazer
 

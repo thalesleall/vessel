@@ -710,6 +710,32 @@ async fn require_unlocked(state: &AppState) -> Result<(), String> {
     }
 }
 
+/// With terminal input disabled an agent may still open a terminal to read it, but nothing
+/// that runs a command by itself: no custom programs and no profiles with arguments or
+/// environment (e.g. `powershell -Command ...`).
+async fn check_plain_shell(state: &AppState, target: &LocalTarget) -> Result<(), String> {
+    const DENIED: &str = "With typing disabled for agents (Vessel → Agentes de IA), only plain built-in shells can be opened: no custom programs, arguments or environment variables.";
+    let profile;
+    let (shell, plain) = match target {
+        LocalTarget::Shell(s) => (s, true),
+        LocalTarget::Profile(id) => {
+            let item = state.vessel.lock().await.find(*id).map_err(err)?;
+            let Some(Entity::TerminalProfile(p)) = item.map(|i| i.entity) else {
+                return Err("terminal profile not found".into());
+            };
+            profile = p;
+            (
+                &profile.shell,
+                profile.args.is_empty() && profile.env.is_empty(),
+            )
+        }
+    };
+    if matches!(shell, Shell::Custom { .. }) || !plain {
+        return Err(DENIED.into());
+    }
+    Ok(())
+}
+
 fn require_input(state: &AppState) -> Result<(), String> {
     if state.settings().mcp_allow_terminal_input {
         Ok(())
@@ -989,6 +1015,9 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                 };
                 LocalTarget::Shell(shell)
             };
+            if require_input(state).is_err() {
+                check_plain_shell(state, &target).await?;
+            }
             let info = ops::open_local(state, target, 120, 32, true)
                 .await
                 .map_err(err)?;
@@ -1010,6 +1039,14 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                 .get("trust_new_host_key")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            if require_input(state).is_err() {
+                let host = state.vessel.lock().await.find(host_id).map_err(err)?;
+                if let Some(Entity::Host(h)) = host.map(|i| i.entity)
+                    && h.startup_snippet_id.is_some()
+                {
+                    return Err("This host runs a snippet on connect, and running commands is disabled for agents in Vessel settings (Agentes de IA).".into());
+                }
+            }
             match ops::open_ssh(state, host_id, 120, 32, trust, true).await {
                 Ok(info) => {
                     wait_for_quiet(
