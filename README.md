@@ -55,8 +55,11 @@ Você escolhe onde os dados ficam: só no seu computador, ou num servidor de sin
 
 > O Vessel está na versão 0.1. Por enquanto o instalador é só para Windows. macOS e Linux estão nos planos.
 
-1. Baixe o instalador na página de [Releases](https://github.com/thalesleall/vessel/releases), ou [compile a partir do código](#compilar-a-partir-do-código).
-2. Na primeira tela, escolha como usar:
+1. Baixe o `Vessel_<versão>_x64-setup.exe` da [última versão](https://github.com/thalesleall/vessel/releases/latest).
+2. Abra o instalador. Ele instala só para o seu usuário, sem pedir administrador, e já traz a ponte MCP (`vessel-mcp.exe`).
+   - Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**. Isso acontece porque o instalador ainda não é assinado digitalmente.
+   - Para conferir o arquivo, compare o SHA-256 com o `SHA256SUMS.txt` do release.
+3. Abra o **Vessel** pelo menu Iniciar e escolha como usar:
 
 <p align="center">
   <img src="docs/assets/onboarding.png" alt="Primeira tela: só neste computador ou sincronizar com um servidor" width="75%">
@@ -186,6 +189,17 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 Os testes de SSH real usam um laboratório em Docker (bastion, jump host e alvo). Como subir o laboratório e o roteiro de testes manuais estão em [docs/TESTING.md](docs/TESTING.md).
+
+### Publicar uma versão
+
+Atualize a versão em `apps/desktop/src-tauri/tauri.conf.json` e envie uma tag com o mesmo número:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+O workflow `Release` compila no Windows e publica o release no GitHub com três arquivos: o instalador (com a ponte MCP dentro), a ponte avulsa e o `SHA256SUMS.txt`. A cada push, o workflow `CI` roda os testes, o clippy e a checagem do frontend.
 
 ### Estrutura
 
