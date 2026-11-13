@@ -48,6 +48,10 @@ impl KdfParams {
         {
             return Err(CryptoError::WeakKdfParams);
         }
+        // Parameters can come from the server: an absurd cost would hang or exhaust the client.
+        if self.memory_kib > 2 * 1024 * 1024 || self.iterations > 32 || self.parallelism > 16 {
+            return Err(CryptoError::WeakKdfParams);
+        }
         Ok(())
     }
 

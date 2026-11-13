@@ -331,6 +331,10 @@ pub struct VaultSummary {
     pub meta: Bytes,
     pub meta_key_version: u32,
     pub last_seq: u64,
+    /// A member left or was removed since the last key rotation started: a manager must rotate
+    /// so data written from now on uses a key the former member never held.
+    #[serde(default)]
+    pub rotation_due: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

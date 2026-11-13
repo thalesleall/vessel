@@ -102,6 +102,19 @@ fn admins_cannot_touch_owner_or_peers() {
 }
 
 #[test]
+fn only_the_owner_can_add_admins() {
+    let mut w = World::new(OWNER);
+    w.push(Action::Add, ALICE, Some(Role::Admin), OWNER)
+        .unwrap();
+    // Audit finding agent/membership-add-role-bypasses-owner-only-admin.
+    assert!(
+        w.push(Action::Add, EVE, Some(Role::Admin), ALICE).is_err(),
+        "an admin added another admin"
+    );
+    w.push(Action::Add, EVE, Some(Role::Editor), ALICE).unwrap();
+}
+
+#[test]
 fn owner_cannot_leave() {
     let mut w = World::new(OWNER);
     assert!(w.push(Action::Remove, OWNER, None, OWNER).is_err());

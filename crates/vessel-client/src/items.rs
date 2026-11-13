@@ -76,11 +76,7 @@ impl Vessel {
         id: &Uuid,
         entity: Option<&Entity>,
     ) -> Result<(u32, Vec<u8>)> {
-        let summary = self
-            .store
-            .vault(vault)?
-            .ok_or_else(|| ClientError::invalid("unknown vault"))?;
-        let kv = summary.current_key_version;
+        let kv = self.write_key_version(vault)?;
         let json = entity.map_or_else(|| b"null".to_vec(), Entity::to_json);
         Ok((
             kv,
@@ -166,9 +162,37 @@ impl Vessel {
             .find(|i| i.vault_id == vault && i.id == id))
     }
 
-    /// Looks an item up by id in any vault.
+    /// Looks an item up by id in any vault. Ids are chosen by clients and unique only per
+    /// vault, so an id present in two vaults is refused instead of resolving to whichever copy
+    /// comes first (another member could otherwise shadow one of the user's records).
     pub fn find(&self, id: Uuid) -> Result<Option<Item>> {
-        Ok(self.items(None)?.into_iter().find(|i| i.id == id))
+        let mut matches = self.items(None)?.into_iter().filter(|i| i.id == id);
+        let first = matches.next();
+        if first.is_some() && matches.next().is_some() {
+            return Err(ClientError::invalid(
+                "this id exists in more than one vault; refusing an ambiguous reference",
+            ));
+        }
+        Ok(first)
+    }
+
+    /// The key version new writes to `vault` must use: the server's current version, but never
+    /// lower than the newest verified key held for the vault (a server cannot roll writes back
+    /// to a key a removed member still holds).
+    pub(crate) fn write_key_version(&self, vault: &Uuid) -> Result<u32> {
+        let summary = self
+            .store
+            .vault(vault)?
+            .ok_or_else(|| ClientError::invalid("unknown vault"))?;
+        let held = self
+            .unlocked()?
+            .vault_keys
+            .keys()
+            .filter(|(v, _)| v == vault)
+            .map(|(_, kv)| *kv)
+            .max()
+            .unwrap_or(0);
+        Ok(summary.current_key_version.max(held))
     }
 
     fn check_writable(&self, vault: &Uuid) -> Result<()> {

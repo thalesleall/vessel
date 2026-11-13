@@ -138,6 +138,12 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
             "BEGIN; {SCHEMA_V1} PRAGMA user_version = 1; COMMIT;"
         ))?;
     }
+    if version < 2 {
+        // Set when a member leaves or is removed; cleared when a new key rotation starts.
+        conn.execute_batch(
+            "BEGIN; ALTER TABLE vaults ADD COLUMN rotation_due INTEGER NOT NULL DEFAULT 0; PRAGMA user_version = 2; COMMIT;",
+        )?;
+    }
     Ok(())
 }
 

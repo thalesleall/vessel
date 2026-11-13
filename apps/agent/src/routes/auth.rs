@@ -85,9 +85,23 @@ fn signup_allowed(
             {
                 return Ok(Some(hash));
             }
-            // Vault invites also admit new users on invite-only servers.
-            if vault.is_some() && expires > now() && email_ok && mode == SignupMode::InviteOnly {
-                return Ok(None);
+            // A vault invite also admits its invitee as a new user, once: the token is consumed
+            // by the sign-up (accepted_by = the new user, who can then accept it into the vault)
+            // and only while its vault still exists.
+            if let Some(vault_id) = vault
+                && accepted.is_none()
+                && expires > now()
+                && email_ok
+                && mode != SignupMode::Disabled
+            {
+                let vault_exists: bool = conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM vaults WHERE id = ?1)",
+                    [&vault_id],
+                    |r| r.get(0),
+                )?;
+                if vault_exists {
+                    return Ok(Some(hash));
+                }
             }
         }
         return Err(AppError::new(
@@ -119,12 +133,14 @@ pub async fn register_start(
     let email2 = email.clone();
     state
         .db(move |conn| {
+            // Admission first, so a closed server does not reveal which e-mails have accounts.
+            signup_allowed(conn, mode, &email2, invite.as_deref())?;
             if user_by_email(conn, &email2)?.is_some() {
                 return Err(AppError::conflict(
                     "an account with this e-mail already exists",
                 ));
             }
-            signup_allowed(conn, mode, &email2, invite.as_deref()).map(|_| ())
+            Ok(())
         })
         .await?;
 

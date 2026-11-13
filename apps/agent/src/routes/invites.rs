@@ -122,6 +122,14 @@ pub async fn accept(
                 return Ok((None, Vec::new()));
             };
             let vault = uuid_from(vault)?;
+            let vault_exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM vaults WHERE id = ?1)",
+                [vault.as_bytes().as_slice()],
+                |r| r.get(0),
+            )?;
+            if !vault_exists {
+                return Err(invalid());
+            }
             if db::member_role(&tx, &vault, &auth.user_id)?.is_some() {
                 return Err(AppError::conflict("you are already a member of this vault"));
             }

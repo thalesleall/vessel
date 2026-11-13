@@ -241,8 +241,8 @@ export const api = {
   fingerprint: () => invoke<string>("fingerprint"),
 
   detectShells: () => invoke<DetectedShell[]>("detect_shells"),
-  openLocal: (opts: { profileId?: Uuid; shell?: Shell }, cols: number, rows: number) =>
-    invoke<SessionInfo>("open_local", { profileId: opts.profileId ?? null, shell: opts.shell ?? null, cols, rows }),
+  openLocal: (opts: { profileId?: Uuid; shell?: Shell; confirmed?: boolean }, cols: number, rows: number) =>
+    invoke<SessionInfo>("open_local", { profileId: opts.profileId ?? null, shell: opts.shell ?? null, cols, rows, confirmed: opts.confirmed ?? null }),
   openSsh: (hostId: Uuid, cols: number, rows: number, trustNew = false) =>
     invoke<SessionInfo>("open_ssh", { hostId, cols, rows, trustNew }),
   terminals: () => invoke<SessionInfo[]>("terminals"),

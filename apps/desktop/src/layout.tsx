@@ -1,7 +1,7 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
 import { api, shellLabel, type Shell } from "./api";
 import {
-  activeTab, itemsOf, lastSync, section, sessions, setActiveTab, setSection, setStatus, settings, status, syncError, syncing,
+  activeTab, itemsOf, lastSync, ownProfiles, section, sessions, setActiveTab, setSection, setStatus, settings, status, syncError, syncing,
   refreshSessions, type Section,
 } from "./store";
 import { HostKeyPrompt, TerminalView, connectHost, openProfile } from "./terminal";
@@ -82,10 +82,10 @@ function TabBar() {
     await refreshSessions();
     if (activeTab() === id) setActiveTab(sessions().at(-1)?.id ?? "home");
   };
-  const profiles = itemsOf("terminal_profile");
   const quickOpen = () => {
     const def = settings()?.default_profile_id;
-    const p = profiles().find((x) => x.id === def) ?? profiles()[0];
+    const own = ownProfiles();
+    const p = own.find((x) => x.id === def) ?? own[0];
     if (p) openProfile(p.id);
     else setSection("terminals");
   };
@@ -174,7 +174,6 @@ function Palette(props: { onClose: () => void }) {
 
 export function Workspace() {
   const [palette, setPalette] = createSignal(false);
-  const profiles = itemsOf("terminal_profile");
   // Strings compare by value, so terminal views survive refreshes of the session list.
   const sessionIds = createMemo(() => sessions().map((s) => s.id));
 
@@ -188,7 +187,8 @@ export function Workspace() {
       if (e.ctrlKey && e.code === "KeyL" && !e.shiftKey && activeTab() === "home") { e.preventDefault(); api.lock().then(setStatus); }
       if (e.ctrlKey && e.code === "KeyT") {
         e.preventDefault();
-        const p = profiles().find((x) => x.id === settings()?.default_profile_id) ?? profiles()[0];
+        const own = ownProfiles();
+        const p = own.find((x) => x.id === settings()?.default_profile_id) ?? own[0];
         if (p) openProfile(p.id);
       }
     };

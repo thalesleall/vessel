@@ -24,12 +24,13 @@ pub struct VaultRow {
     pub meta: Vec<u8>,
     pub meta_key_version: u32,
     pub last_seq: u64,
+    pub rotation_due: bool,
 }
 
 pub fn vault_row(conn: &Connection, id: &Uuid) -> AppResult<Option<VaultRow>> {
     let row = conn
         .query_row(
-            "SELECT personal, current_key_version, state, meta, meta_key_version, last_seq FROM vaults WHERE id = ?1",
+            "SELECT personal, current_key_version, state, meta, meta_key_version, last_seq, rotation_due FROM vaults WHERE id = ?1",
             [id.as_bytes().as_slice()],
             |r| {
                 Ok((
@@ -39,11 +40,12 @@ pub fn vault_row(conn: &Connection, id: &Uuid) -> AppResult<Option<VaultRow>> {
                     r.get::<_, Vec<u8>>(3)?,
                     r.get::<_, u32>(4)?,
                     r.get::<_, i64>(5)?,
+                    r.get::<_, bool>(6)?,
                 ))
             },
         )
         .optional()?;
-    Ok(row.map(|(personal, kv, st, meta, mkv, seq)| VaultRow {
+    Ok(row.map(|(personal, kv, st, meta, mkv, seq, due)| VaultRow {
         id: *id,
         personal,
         current_key_version: kv,
@@ -55,6 +57,7 @@ pub fn vault_row(conn: &Connection, id: &Uuid) -> AppResult<Option<VaultRow>> {
         meta,
         meta_key_version: mkv,
         last_seq: seq as u64,
+        rotation_due: due,
     }))
 }
 
@@ -80,6 +83,7 @@ fn summary(row: VaultRow, role: Role) -> VaultSummary {
         meta: Bytes(row.meta),
         meta_key_version: row.meta_key_version,
         last_seq: row.last_seq,
+        rotation_due: row.rotation_due,
     }
 }
 
@@ -253,6 +257,12 @@ pub async fn delete_vault(
                 ));
             }
             let members = vault_members(conn, &id)?;
+            // Invites have no foreign key to vaults: drop them explicitly so a deleted vault's
+            // invite can neither admit sign-ups nor be accepted.
+            conn.execute(
+                "DELETE FROM invites WHERE vault_id = ?1",
+                [id.as_bytes().as_slice()],
+            )?;
             conn.execute(
                 "DELETE FROM vaults WHERE id = ?1",
                 [id.as_bytes().as_slice()],
@@ -387,9 +397,16 @@ pub async fn change_membership(
                             |r| r.get(0),
                         )
                         .optional()?;
-                    if pending.is_none() {
+                    let Some(invited_role) = pending else {
                         return Err(AppError::bad_request(
                             "the user has not accepted an invite to this vault",
+                        ));
+                    };
+                    // The approval may lower the role chosen when the invite was created, never
+                    // raise it (only the owner can invite admins).
+                    if role > crate::db::role_from(invited_role)? {
+                        return Err(AppError::forbidden(
+                            "the role is higher than the one in the invite",
                         ));
                     }
                     let grant = req
@@ -442,6 +459,12 @@ pub async fn change_membership(
                     tx.execute(
                         "DELETE FROM grants WHERE vault_id = ?1 AND recipient_id = ?2",
                         params![id.as_bytes().as_slice(), subject.as_bytes().as_slice()],
+                    )?;
+                    // The former member may hold the current key, including one handed out by
+                    // a rotation still in progress: the vault needs a fresh key.
+                    tx.execute(
+                        "UPDATE vaults SET rotation_due = 1 WHERE id = ?1",
+                        [id.as_bytes().as_slice()],
                     )?;
                 }
                 Action::Create => return Err(AppError::bad_request("vault already exists")),
@@ -507,6 +530,9 @@ pub async fn rotate_start(
             if row.state == VaultState::Rotating {
                 return Err(AppError::conflict("a rotation is already in progress"));
             }
+            if req.meta.0.len() > MAX_BLOB_LEN {
+                return Err(AppError::bad_request("vault metadata is too large"));
+            }
             if req.new_key_version != row.current_key_version + 1 {
                 return Err(AppError::bad_request("new key version must be current + 1"));
             }
@@ -523,7 +549,7 @@ pub async fn rotate_start(
                 insert_grant(&tx, &id, grant)?;
             }
             tx.execute(
-                "UPDATE vaults SET current_key_version = ?1, state = 'rotating', meta = ?2, meta_key_version = ?1 WHERE id = ?3",
+                "UPDATE vaults SET current_key_version = ?1, state = 'rotating', meta = ?2, meta_key_version = ?1, rotation_due = 0 WHERE id = ?3",
                 params![req.new_key_version, req.meta.as_slice(), id.as_bytes().as_slice()],
             )?;
             let row = vault_row(&tx, &id)?.ok_or_else(|| AppError::internal("vault vanished"))?;

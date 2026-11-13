@@ -299,6 +299,7 @@ impl Vessel {
             meta: req.meta.clone(),
             meta_key_version: 1,
             last_seq: 0,
+            rotation_due: false,
         })?;
         self.store.set_vault_blob(
             &req.vault_id,
@@ -319,6 +320,9 @@ impl Vessel {
                 roles: BTreeMap::from([(user_id, Role::Owner)]),
                 emails: BTreeMap::from([(user_id, name)]),
                 ever_managers: BTreeSet::from([user_id]),
+                anchor_seq: 1,
+                anchor_head: Some(req.creation_event.hash()),
+                creator: Some(user_id),
             },
         )?;
         self.profile = Some(profile);
@@ -382,7 +386,13 @@ impl Vessel {
         vault: Uuid,
         entries: Vec<(Uuid, Entity)>,
     ) -> Result<(usize, usize)> {
-        let existing = self.items(None)?;
+        // Only the destination vault counts: matching an item in a shared vault would hand the
+        // user's references to a record another member controls.
+        let existing: Vec<crate::Item> = self
+            .items(None)?
+            .into_iter()
+            .filter(|i| i.vault_id == vault)
+            .collect();
         let existing_ids: BTreeSet<Uuid> = existing.iter().map(|i| i.id).collect();
         let has_settings = existing
             .iter()
@@ -418,16 +428,29 @@ impl Vessel {
             let entity = if remap.is_empty() {
                 entity
             } else {
-                let mut json = serde_json::to_string(&entity)?;
-                for (from, to) in &remap {
-                    json = json.replace(from.as_str(), to.as_str());
-                }
-                serde_json::from_str(&json)?
+                // Rewrite whole id values only, never text that merely contains an id.
+                let mut value = serde_json::to_value(&entity)?;
+                remap_ids(&mut value, &remap);
+                serde_json::from_value(value)?
             };
             self.save(vault, Some(id), entity)?;
             imported += 1;
         }
         Ok((imported, skipped))
+    }
+}
+
+/// Replaces string values equal to a remapped id, anywhere in the entity.
+fn remap_ids(value: &mut serde_json::Value, remap: &HashMap<String, String>) {
+    match value {
+        serde_json::Value::String(s) => {
+            if let Some(to) = remap.get(s.as_str()) {
+                *s = to.clone();
+            }
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(|v| remap_ids(v, remap)),
+        serde_json::Value::Object(map) => map.values_mut().for_each(|v| remap_ids(v, remap)),
+        _ => {}
     }
 }
 

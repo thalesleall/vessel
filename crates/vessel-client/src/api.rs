@@ -40,6 +40,20 @@ pub struct Api {
 
 impl Api {
     pub fn new(base_url: &str) -> Result<Self> {
+        let base = normalize_url(base_url);
+        // Plain HTTP only to this computer (tests, a local lab): elsewhere a network attacker
+        // would see access tokens and could act as the server.
+        if let Some(rest) = base.strip_prefix("http://") {
+            let local = rest.starts_with("[::1]") || {
+                let host = rest.split(['/', ':']).next().unwrap_or_default();
+                host == "localhost" || host.ends_with(".localhost") || host.starts_with("127.")
+            };
+            if !local {
+                return Err(ClientError::invalid(
+                    "use an https:// address for the sync server (plain http is only allowed for localhost)",
+                ));
+            }
+        }
         let http = reqwest::Client::builder()
             .user_agent(concat!("vessel/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
@@ -47,7 +61,7 @@ impl Api {
             .build()?;
         Ok(Self {
             http,
-            base: normalize_url(base_url),
+            base,
             session: Mutex::new(Session::default()),
         })
     }

@@ -59,11 +59,17 @@ impl Vessel {
             report.conflicts += conflicts;
 
             let summary = self.store.vault(&vault)?.unwrap_or(summary);
-            if summary.state == VaultState::Rotating
-                && summary.role.can_manage()
-                && let Err(e) = self.finish_rotation(vault).await
-            {
-                tracing::warn!(%vault, "rotation still in progress: {e}");
+            if summary.role.can_manage() {
+                if summary.rotation_due {
+                    // Someone left or was removed and the vault still uses a key they may hold.
+                    if let Err(e) = self.rotate_vault(vault).await {
+                        tracing::warn!(%vault, "key rotation after a removal failed: {e}");
+                    }
+                } else if summary.state == VaultState::Rotating
+                    && let Err(e) = self.finish_rotation(vault).await
+                {
+                    tracing::warn!(%vault, "rotation still in progress: {e}");
+                }
             }
         }
         // Items carried over from local mode go into the personal vault once it exists here.

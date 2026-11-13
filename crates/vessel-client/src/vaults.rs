@@ -26,6 +26,8 @@ pub struct VaultView {
     pub role: Role,
     pub rotating: bool,
     pub member_count: usize,
+    /// Current key version (grows by one per rotation).
+    pub key_version: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -57,6 +59,14 @@ pub(crate) struct CachedMembership {
     pub roles: BTreeMap<Uuid, Role>,
     pub emails: BTreeMap<Uuid, String>,
     pub ever_managers: BTreeSet<Uuid>,
+    /// Anchor of the history verified so far: later histories must extend it (no rollback,
+    /// truncation or replacement by the server).
+    #[serde(default)]
+    pub anchor_seq: u64,
+    #[serde(default)]
+    pub anchor_head: Option<[u8; 32]>,
+    #[serde(default)]
+    pub creator: Option<Uuid>,
 }
 
 fn meta_context(vault_id: Uuid, key_version: u32) -> RecordContext {
@@ -139,6 +149,11 @@ pub(crate) fn open_grants(
     cached: &GrantsResponse,
 ) {
     for grant in &cached.grants {
+        // The grant authenticates its own vault id: never install it into another vault.
+        if grant.vault_id != *vault_id.as_bytes() {
+            tracing::warn!(%vault_id, "ignoring a grant issued for another vault");
+            continue;
+        }
         let Some(granter) = cached
             .granters
             .iter()
@@ -148,9 +163,18 @@ pub(crate) fn open_grants(
         };
         match grant.open(me.as_bytes(), &unlocked.account.keys, &granter.public_keys) {
             Ok(key) => {
-                unlocked
-                    .vault_keys
-                    .insert((vault_id, grant.key_version), key);
+                // A key already installed for this version is never replaced by a different one.
+                match unlocked.vault_keys.get(&(vault_id, grant.key_version)) {
+                    Some(existing) if *existing != key => {
+                        tracing::warn!(%vault_id, key_version = grant.key_version, "ignoring a conflicting grant");
+                    }
+                    Some(_) => {}
+                    None => {
+                        unlocked
+                            .vault_keys
+                            .insert((vault_id, grant.key_version), key);
+                    }
+                }
             }
             Err(e) => {
                 tracing::warn!(%vault_id, key_version = grant.key_version, "ignoring grant: {e}")
@@ -204,6 +228,22 @@ impl Vessel {
             .map(|u| (*u.user_id.as_bytes(), u.public_keys))
             .collect();
 
+        let anchor = self.cached_membership(&vault_id)?;
+        if anchor.anchor_seq > response.events.len() as u64 {
+            return Err(ClientError::invalid(
+                "the server returned a shorter membership history than the one already verified",
+            ));
+        }
+        let creator = response
+            .events
+            .first()
+            .map(|e| Uuid::from_bytes(e.body.actor))
+            .ok_or_else(|| ClientError::invalid("empty membership history"))?;
+        if anchor.creator.is_some_and(|c| c != creator) {
+            return Err(ClientError::invalid(
+                "the server returned a membership history with a different creator",
+            ));
+        }
         let mut state = Membership::default();
         let mut ever_managers = BTreeSet::new();
         for event in &response.events {
@@ -211,6 +251,13 @@ impl Vessel {
                 ClientError::invalid("membership history references an unknown user")
             })?;
             state.apply(vault_id.as_bytes(), event, actor)?;
+            if state.next_seq == anchor.anchor_seq
+                && anchor.anchor_head.is_some_and(|h| h != state.head)
+            {
+                return Err(ClientError::invalid(
+                    "the server returned a membership history that rewrites events already verified",
+                ));
+            }
             if let Some(role) = state.role_of(&event.body.subject)
                 && role.can_manage()
             {
@@ -235,6 +282,9 @@ impl Vessel {
                 .map(|u| (u.user_id, u.email.clone()))
                 .collect(),
             ever_managers,
+            anchor_seq: state.next_seq,
+            anchor_head: Some(state.head),
+            creator: Some(creator),
         };
         self.store
             .set_vault_blob(&vault_id, VaultColumn::Membership, &cached)?;
@@ -285,6 +335,7 @@ impl Vessel {
 
     pub fn vaults(&self) -> Result<Vec<VaultView>> {
         self.unlocked()?;
+        let personal = self.personal_vault().ok();
         let mut out: Vec<VaultView> = self
             .store
             .vaults()?
@@ -300,9 +351,11 @@ impl Vessel {
                     name: meta.name,
                     description: meta.description,
                     color: meta.color,
-                    personal: s.personal,
+                    // Verified, not the server's flag (see personal_vault).
+                    personal: Some(s.vault_id) == personal,
                     role: s.role,
                     rotating: s.state == VaultState::Rotating,
+                    key_version: s.current_key_version,
                     member_count: members,
                 }
             })
@@ -315,13 +368,19 @@ impl Vessel {
         Ok(out)
     }
 
+    /// The user's own vault. The server's `personal` flag alone is not trusted: the verified
+    /// history must show this user as its creator and only member.
     pub fn personal_vault(&self) -> Result<Uuid> {
-        self.store
-            .vaults()?
-            .into_iter()
-            .find(|v| v.personal)
-            .map(|v| v.vault_id)
-            .ok_or_else(|| ClientError::invalid("personal vault not synced yet"))
+        let me = self.user_id()?;
+        for v in self.store.vaults()?.into_iter().filter(|v| v.personal) {
+            let m = self.cached_membership(&v.vault_id)?;
+            let only_me = m.roles.len() == 1 && m.roles.get(&me) == Some(&Role::Owner);
+            if only_me && m.creator.is_none_or(|c| c == me) {
+                return Ok(v.vault_id);
+            }
+            tracing::warn!(vault = %v.vault_id, "ignoring a vault the server marks as personal");
+        }
+        Err(ClientError::invalid("personal vault not synced yet"))
     }
 
     pub async fn create_vault(&mut self, name: &str) -> Result<Uuid> {
@@ -342,8 +401,7 @@ impl Vessel {
     }
 
     pub async fn update_vault(&mut self, vault_id: Uuid, meta: VaultMeta) -> Result<()> {
-        let summary = self.summary(&vault_id)?;
-        let kv = summary.current_key_version;
+        let kv = self.write_key_version(&vault_id)?;
         let sealed = seal_meta(self.vault_key(&vault_id, kv)?, vault_id, kv, &meta)?;
         self.api()?
             .put::<_, ()>(
@@ -458,7 +516,10 @@ impl Vessel {
                 &MembershipChangeRequest { event, grants },
             )
             .await?;
-        self.verify_membership(vault_id).await?;
+        // After leaving, the vault is no longer readable: there is nothing left to verify.
+        if !(action == Action::Remove && subject == me) {
+            self.verify_membership(vault_id).await?;
+        }
         self.persist_session().await
     }
 
@@ -472,8 +533,7 @@ impl Vessel {
             .find(|p| p.user.user_id == user_id)
             .ok_or_else(|| ClientError::invalid("this user has no pending invite"))?
             .clone();
-        let summary = self.summary(&vault_id)?;
-        let kv = summary.current_key_version;
+        let kv = self.write_key_version(&vault_id)?;
         let me = self.user_id()?;
         let grant = Grant::issue(
             GrantParties {
@@ -523,13 +583,21 @@ impl Vessel {
     }
 
     /// Generates a new vault key, grants it to every current member and re-encrypts every
-    /// record with it (`docs/ARCHITECTURE.md` §7.5).
+    /// record with it (`docs/ARCHITECTURE.md` §7.5). A rotation already in progress is finished
+    /// first and then superseded: its key was handed to whoever was a member when it started,
+    /// possibly including someone removed since.
     pub async fn rotate_vault(&mut self, vault_id: Uuid) -> Result<()> {
         self.pull_vault(vault_id).await?;
+        if self.summary(&vault_id)?.state == VaultState::Rotating {
+            self.finish_rotation(vault_id).await?;
+            self.pull_vault(vault_id).await?;
+        }
         let (state, response) = self.verify_membership(vault_id).await?;
         let summary = self.summary(&vault_id)?;
         if summary.state == VaultState::Rotating {
-            return self.finish_rotation(vault_id).await;
+            return Err(ClientError::invalid(
+                "another key rotation is in progress; try again",
+            ));
         }
         let new_kv = summary.current_key_version + 1;
         let vk = SymmetricKey::generate()?;

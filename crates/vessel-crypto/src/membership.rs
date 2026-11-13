@@ -176,7 +176,12 @@ impl Membership {
             (Action::Create, Some(Role::Owner)) if b.seq == 0 && b.actor == b.subject => {}
             (Action::Add, Some(role)) => {
                 let actor = actor_role.ok_or(bad("actor is not a member"))?;
-                if !actor.can_manage() || subject_role.is_some() || role == Role::Owner {
+                // Same rule as ChangeRole: only the owner can make someone an admin.
+                if !actor.can_manage()
+                    || subject_role.is_some()
+                    || role == Role::Owner
+                    || (role >= Role::Admin && actor != Role::Owner)
+                {
                     return Err(bad("add is not allowed"));
                 }
             }

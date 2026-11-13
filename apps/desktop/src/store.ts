@@ -34,12 +34,22 @@ export function itemsOf<K extends Kind>(kind: K) {
   return createMemo(() => items().filter((i) => i.entity.type === kind) as Item<Extract<Item["entity"], { type: K }>>[]);
 }
 
+/** The user's own vault (verified by the client core, not the server's flag). */
+export const personalVaultId = createMemo(() => vaults().find((v) => v.personal)?.id ?? null);
+
+/** Settings and defaults come only from the personal vault: another member of a shared vault
+ * must not be able to change them (e.g. the default terminal or the auto-lock delay). */
+export const settingsItem = createMemo(() =>
+  items().find((i) => i.entity.type === "settings" && i.vault_id === personalVaultId()) ?? null);
+
 export const settings = createMemo<Settings | null>(() => {
-  const s = items().find((i) => i.entity.type === "settings");
+  const s = settingsItem();
   return s && s.entity.type === "settings" ? s.entity.data : null;
 });
 
-export const settingsItem = createMemo(() => items().find((i) => i.entity.type === "settings") ?? null);
+/** Terminal profiles that may be opened implicitly (Ctrl+T, the + tab): the user's own. */
+export const ownProfiles = createMemo(() =>
+  items().filter((i) => i.entity.type === "terminal_profile" && i.vault_id === personalVaultId()));
 
 export const writableVaults = createMemo(() => vaults().filter((v) => v.role !== "viewer"));
 

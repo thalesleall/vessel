@@ -6,7 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
 import { api, errorCode, errorMessage, type SessionInfo, type Shell } from "./api";
 import { activeTab, refreshSessions, sessions, setActiveTab, settings, toast } from "./store";
-import { Button, Icon, Modal } from "./ui";
+import { Button, Icon, Modal, confirmAction } from "./ui";
 import { resolvedTheme } from "./theme";
 
 const darkTheme: ITheme = {
@@ -38,12 +38,33 @@ export const terminalTheme = () => (resolvedTheme() === "light" ? lightTheme : d
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 32;
 
-export async function openProfile(profileId: string) {
+export async function openProfile(profileId: string, confirmed = false) {
   try {
-    const s = await api.openLocal({ profileId }, DEFAULT_COLS, DEFAULT_ROWS);
+    const s = await api.openLocal({ profileId, confirmed }, DEFAULT_COLS, DEFAULT_ROWS);
     await refreshSessions();
     setActiveTab(s.id);
   } catch (e) {
+    if (errorCode(e) === "confirm_profile") {
+      // A profile written by another member of a shared vault runs its own command: show the
+      // whole command line before running it.
+      const d = (e as { details?: { label?: string; program?: string; args?: string[]; env?: string[]; cwd?: string } }).details ?? {};
+      const line = [d.program, ...(d.args ?? [])].filter(Boolean).join(" ");
+      const ok = await confirmAction({
+        title: `Executar "${d.label ?? "perfil"}"?`,
+        message: [
+          "Este perfil vem de um cofre compartilhado e executa:",
+          "",
+          line,
+          ...(d.env?.length ? ["", `Variáveis de ambiente: ${d.env.join(", ")}`] : []),
+          ...(d.cwd ? [`Pasta: ${d.cwd}`] : []),
+          "",
+          "Só continue se você confia em quem criou o perfil.",
+        ].join("\n"),
+        confirm: "Executar",
+      });
+      if (ok) return openProfile(profileId, true);
+      return;
+    }
     toast(errorMessage(e), "error");
   }
 }

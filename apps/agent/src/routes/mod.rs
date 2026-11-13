@@ -15,10 +15,14 @@ use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
 
+/// Unauthenticated and account routes carry small JSON documents: cap them well below the
+/// limit record pushes need, so anonymous clients cannot make the agent buffer large bodies.
+const AUTH_BODY_LIMIT: usize = 256 * 1024;
+/// Authenticated record pushes (up to `MAX_BATCH` records of `MAX_BLOB_LEN`).
+const BODY_LIMIT: usize = 64 * 1024 * 1024;
+
 pub fn router(state: AppState) -> Router {
-    let api = Router::new()
-        .route("/server/info", get(account::server_info))
-        // Authentication
+    let auth_routes = Router::new()
         .route("/auth/register/start", post(auth::register_start))
         .route("/auth/register/finish", post(auth::register_finish))
         .route("/auth/login/start", post(auth::login_start))
@@ -27,10 +31,14 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/logout", post(auth::logout))
         .route("/auth/recovery/start", post(auth::recovery_start))
         .route("/auth/recovery/finish", post(auth::recovery_finish))
-        // Account, devices, users
-        .route("/account", get(account::get_account))
         .route("/account/password/start", post(auth::password_start))
         .route("/account/password/finish", post(auth::password_finish))
+        .layer(DefaultBodyLimit::max(AUTH_BODY_LIMIT));
+    let api = Router::new()
+        .route("/server/info", get(account::server_info))
+        .merge(auth_routes)
+        // Account, devices, users
+        .route("/account", get(account::get_account))
         .route("/devices", get(account::list_devices))
         .route("/devices/{id}", delete(account::revoke_device))
         .route("/users/lookup", get(account::lookup_user))
@@ -64,7 +72,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/v1", api)
         .route("/invite/{token}", get(invites::landing_page))
         .route("/health", get(|| async { "ok" }))
-        .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -75,7 +83,9 @@ pub fn client_ip(state: &AppState, headers: &HeaderMap, peer: &ConnectInfo<Socke
         let forwarded = headers
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split(',').next())
+            // The rightmost entry is the one the trusted proxy appended; entries to its left
+            // are whatever the client sent.
+            .and_then(|v| v.split(',').next_back())
             .and_then(|v| v.trim().parse().ok());
         if let Some(ip) = forwarded {
             return ip;

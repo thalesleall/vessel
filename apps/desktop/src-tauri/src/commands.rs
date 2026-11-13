@@ -487,13 +487,22 @@ pub async fn open_local(
     shell: Option<Shell>,
     cols: u16,
     rows: u16,
+    confirmed: Option<bool>,
 ) -> CmdResult<SessionInfo> {
     let target = match (profile_id, shell) {
         (Some(id), _) => LocalTarget::Profile(id),
         (None, Some(shell)) => LocalTarget::Shell(shell),
         (None, None) => LocalTarget::Shell(Shell::Pwsh),
     };
-    ops::open_local(&state, target, cols, rows, false).await
+    ops::open_local(
+        &state,
+        target,
+        cols,
+        rows,
+        false,
+        confirmed.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]

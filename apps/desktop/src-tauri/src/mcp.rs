@@ -23,6 +23,7 @@ use vessel_client::model::{Entity, EntityKind, Shell};
 
 use crate::error::CmdError;
 use crate::ops::{self, LocalTarget};
+use crate::ssh;
 use crate::state::AppState;
 use crate::terminal::to_plain_text;
 
@@ -525,8 +526,8 @@ fn tool_definitions() -> Vec<Value> {
         tool(
             "connect_ssh",
             "Connect to host",
-            "Open an SSH session to a saved host using its stored credentials. Unknown host keys are refused unless trust_new_host_key is true; changed host keys are always refused.",
-            json!({ "host_id": id, "trust_new_host_key": { "type": "boolean", "default": false } }),
+            "Open an SSH session to a saved host using its stored credentials. Only servers whose host key the user already confirmed in the app are reachable; unknown or changed host keys are refused.",
+            json!({ "host_id": id }),
             &["host_id"],
             false,
             false,
@@ -594,7 +595,7 @@ fn tool_definitions() -> Vec<Value> {
             "start_port_forward",
             "Start port forward",
             "Start a saved port forwarding rule.",
-            json!({ "rule_id": id, "trust_new_host_key": { "type": "boolean", "default": false } }),
+            json!({ "rule_id": id }),
             &["rule_id"],
             false,
             false,
@@ -746,27 +747,28 @@ async fn require_unlocked(state: &AppState) -> Result<(), String> {
 /// With terminal input disabled an agent may still open a terminal to read it, but nothing
 /// that runs a command by itself: no custom programs and no profiles with arguments or
 /// environment (e.g. `powershell -Command ...`).
-async fn check_plain_shell(state: &AppState, target: &LocalTarget) -> Result<(), String> {
+/// With typing disabled: resolves the target once and returns exactly what will be spawned,
+/// refusing anything that runs a command by itself. Returning the checked profile (instead of
+/// re-reading it when spawning) closes the window for a concurrent edit.
+async fn check_plain_shell(state: &AppState, target: LocalTarget) -> Result<LocalTarget, String> {
     const DENIED: &str = "With typing disabled for agents (Vessel → Agentes de IA), only plain built-in shells can be opened: no custom programs, arguments or environment variables.";
-    let profile;
-    let (shell, plain) = match target {
-        LocalTarget::Shell(s) => (s, true),
+    match target {
+        LocalTarget::Shell(s) if !matches!(s, Shell::Custom { .. }) => Ok(LocalTarget::Shell(s)),
         LocalTarget::Profile(id) => {
-            let item = state.vessel.lock().await.find(*id).map_err(err)?;
-            let Some(Entity::TerminalProfile(p)) = item.map(|i| i.entity) else {
+            let item = state.vessel.lock().await.find(id).map_err(err)?;
+            let Some(Entity::TerminalProfile(profile)) = item.map(|i| i.entity) else {
                 return Err("terminal profile not found".into());
             };
-            profile = p;
-            (
-                &profile.shell,
-                profile.args.is_empty() && profile.env.is_empty(),
-            )
+            if ops::runs_custom_command(&profile) {
+                return Err(DENIED.into());
+            }
+            Ok(LocalTarget::Resolved {
+                profile_id: id,
+                profile,
+            })
         }
-    };
-    if matches!(shell, Shell::Custom { .. }) || !plain {
-        return Err(DENIED.into());
+        _ => Err(DENIED.into()),
     }
-    Ok(())
 }
 
 fn require_input(state: &AppState) -> Result<(), String> {
@@ -801,6 +803,10 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
             } else {
                 0
             };
+            // While locked, say only that: who is signed in and where is not for agents to learn.
+            if !status.unlocked {
+                return Ok(json!({ "unlocked": false, "signed_in": status.signed_in }));
+            }
             Ok(json!({
                 "unlocked": status.unlocked,
                 "signed_in": status.signed_in,
@@ -1049,10 +1055,14 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                 };
                 LocalTarget::Shell(shell)
             };
-            if require_input(state).is_err() {
-                check_plain_shell(state, &target).await?;
-            }
-            let info = ops::open_local(state, target, 120, 32, true)
+            // With typing allowed an agent could type the same command anyway, so a shared
+            // profile needs no extra confirmation here; without it, only plain shells open.
+            let target = if require_input(state).is_err() {
+                check_plain_shell(state, target).await?
+            } else {
+                target
+            };
+            let info = ops::open_local(state, target, 120, 32, true, true)
                 .await
                 .map_err(err)?;
             // Wait for the first prompt so a following terminal_run is not typed into a shell
@@ -1069,19 +1079,14 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
         }
         "connect_ssh" => {
             let host_id = arg_uuid(args, "host_id")?;
-            let trust = args
-                .get("trust_new_host_key")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            if require_input(state).is_err() {
-                let host = state.vessel.lock().await.find(host_id).map_err(err)?;
-                if let Some(Entity::Host(h)) = host.map(|i| i.entity)
-                    && h.startup_snippet_id.is_some()
-                {
-                    return Err("This host runs a snippet on connect, and running commands is disabled for agents in Vessel settings (Agentes de IA).".into());
-                }
+            // The plan is built once: the startup-snippet check applies to exactly what runs.
+            let plan = ssh::plan(&*state.vessel.lock().await, host_id).map_err(err)?;
+            if require_input(state).is_err() && plan.startup_script.is_some() {
+                return Err("This host runs a snippet on connect, and running commands is disabled for agents in Vessel settings (Agentes de IA).".into());
             }
-            match ops::open_ssh(state, host_id, 120, 32, trust, true).await {
+            // Agents never accept a new host key: otherwise an agent could point a host that
+            // carries saved credentials at its own server and receive the password.
+            match ops::open_ssh_plan(state, host_id, plan, 120, 32, false, true).await {
                 Ok(info) => {
                     wait_for_quiet(
                         state,
@@ -1096,8 +1101,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                     Ok(json!({ "session": info, "output": banner }))
                 }
                 Err(e) if e.code == "host_key_unknown" => Err(format!(
-                    "{} Fingerprint: {}. Confirm it with the user, then call again with trust_new_host_key=true.",
-                    e.message,
+                    "The host key of this server is not trusted yet (fingerprint {}). Agents cannot accept new host keys: ask the user to connect to this host once in the Vessel app and confirm the fingerprint there, then try again.",
                     e.details
                         .as_ref()
                         .and_then(|d| d.get("fingerprint"))
@@ -1202,11 +1206,8 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
         }
         "start_port_forward" => {
             let id = arg_uuid(args, "rule_id")?;
-            let trust = args
-                .get("trust_new_host_key")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let status = ops::start_forward(state, id, trust).await.map_err(err)?;
+            // As with connect_ssh, new host keys are confirmed only by the user, in the app.
+            let status = ops::start_forward(state, id, false).await.map_err(err)?;
             Ok(serde_json::to_value(status).unwrap_or_default())
         }
         "stop_port_forward" => {

@@ -42,27 +42,74 @@ pub struct Plan {
     pub startup_script: Option<String>,
 }
 
-fn find(items: &[vessel_client::Item], id: Uuid) -> Option<&Entity> {
-    items.iter().find(|i| i.id == id).map(|i| &i.entity)
+/// Where references are allowed to resolve. Another member of a shared vault must not be able to
+/// redirect the user's references (credentials, pins, snippets, jump hosts) to records they
+/// control, so a reference made by an item resolves only in that item's own vault or in the
+/// user's personal vault, and trust pins come only from the personal vault.
+struct Scope<'a> {
+    items: &'a [vessel_client::Item],
+    personal: Option<Uuid>,
 }
 
-fn hop_for(items: &[vessel_client::Item], host: &Host) -> CmdResult<Hop> {
+impl<'a> Scope<'a> {
+    fn new(items: &'a [vessel_client::Item], vessel: &Vessel) -> Self {
+        Self {
+            items,
+            personal: vessel.personal_vault().ok(),
+        }
+    }
+
+    /// A reference made by an item stored in `origin`.
+    fn get(&self, origin: Uuid, id: Uuid) -> Option<&'a vessel_client::Item> {
+        let in_vault = |v: Uuid| self.items.iter().find(|i| i.id == id && i.vault_id == v);
+        in_vault(origin).or_else(|| self.personal.and_then(in_vault))
+    }
+
+    /// An entry point chosen by the user (the host they clicked). Refuses an id present in
+    /// several vaults instead of picking one.
+    fn entry(&self, id: Uuid) -> CmdResult<&'a vessel_client::Item> {
+        let mut matches = self.items.iter().filter(|i| i.id == id);
+        let first = matches.next();
+        if first.is_some() && matches.next().is_some() {
+            return Err(CmdError::new(
+                "invalid",
+                "Esse host aparece em mais de um cofre com o mesmo id; a conexão foi recusada.",
+            ));
+        }
+        first.ok_or_else(|| CmdError::new("not_found", "Host não encontrado."))
+    }
+
+    fn pin(&self, host_port: &str) -> Option<String> {
+        let personal = self.personal?;
+        self.items.iter().find_map(|i| match &i.entity {
+            Entity::KnownHost(k) if i.vault_id == personal && k.host == host_port => {
+                Some(k.fingerprint.clone())
+            }
+            _ => None,
+        })
+    }
+}
+
+fn hop_for(scope: &Scope, origin: Uuid, host: &Host) -> CmdResult<Hop> {
+    let find = |owner: Uuid, id: Uuid| scope.get(owner, id).map(|i| (i.vault_id, &i.entity));
     // Credentials: inline values on the host win, then the host's identity, then its groups'.
-    let mut identity_id = host.identity_id;
-    let mut group = host.group_id;
+    let mut identity_ref = host.identity_id.map(|id| (origin, id));
+    let mut group = host.group_id.map(|id| (origin, id));
     let mut depth = 0;
-    while identity_id.is_none() && depth < 8 {
-        let Some(Entity::Group(g)) = group.and_then(|id| find(items, id)) else {
+    while identity_ref.is_none() && depth < 8 {
+        let Some((vault, Entity::Group(g))) = group.and_then(|(o, id)| find(o, id)) else {
             break;
         };
-        identity_id = g.identity_id;
-        group = g.parent_id;
+        identity_ref = g.identity_id.map(|id| (vault, id));
+        group = g.parent_id.map(|id| (vault, id));
         depth += 1;
     }
-    let identity = identity_id.and_then(|id| match find(items, id) {
-        Some(Entity::Identity(i)) => Some(i.clone()),
+    let identity = identity_ref.and_then(|(o, id)| match find(o, id) {
+        Some((vault, Entity::Identity(i))) => Some((vault, i.clone())),
         _ => None,
     });
+    let identity_vault = identity.as_ref().map(|(v, _)| *v);
+    let identity = identity.map(|(_, i)| i);
     let username = host
         .username
         .clone()
@@ -84,22 +131,20 @@ fn hop_for(items: &[vessel_client::Item], host: &Host) -> CmdResult<Hop> {
         .clone()
         .filter(|p| !p.is_empty())
         .or_else(|| identity.as_ref().and_then(|i| i.password.clone()));
-    let key_id = host
-        .ssh_key_id
-        .or_else(|| identity.as_ref().and_then(|i| i.ssh_key_id));
-    let key = key_id.and_then(|id| match find(items, id) {
-        Some(Entity::SshKey(k)) if !k.private_key.trim().is_empty() => {
+    let key_ref = host.ssh_key_id.map(|id| (origin, id)).or_else(|| {
+        identity
+            .as_ref()
+            .and_then(|i| i.ssh_key_id)
+            .map(|id| (identity_vault.unwrap_or(origin), id))
+    });
+    let key = key_ref.and_then(|(o, id)| match find(o, id) {
+        Some((_, Entity::SshKey(k))) if !k.private_key.trim().is_empty() => {
             Some((k.private_key.clone(), k.passphrase.clone()))
         }
         _ => None,
     });
     let port = host.effective_port();
-    let known_fingerprint = items.iter().find_map(|i| match &i.entity {
-        Entity::KnownHost(k) if k.host == format!("{}:{port}", host.address) => {
-            Some(k.fingerprint.clone())
-        }
-        _ => None,
-    });
+    let known_fingerprint = scope.pin(&format!("{}:{port}", host.address));
     Ok(Hop {
         label: if host.label.is_empty() {
             host.address.clone()
@@ -119,37 +164,41 @@ fn hop_for(items: &[vessel_client::Item], host: &Host) -> CmdResult<Hop> {
 /// Resolves a host (and its jump chain) into a connection plan.
 pub fn plan(vessel: &Vessel, host_id: Uuid) -> CmdResult<Plan> {
     let items = vessel.items(None)?;
-    let host = |id: Uuid| match find(&items, id) {
-        Some(Entity::Host(h)) => Ok(h.clone()),
+    let scope = Scope::new(&items, vessel);
+    let as_host = |item: &vessel_client::Item| match &item.entity {
+        Entity::Host(h) => Ok((item.vault_id, h.clone())),
         _ => Err(CmdError::new("not_found", "Host não encontrado.")),
     };
-    let target = host(host_id)?;
+    let (target_vault, target) = as_host(scope.entry(host_id)?)?;
     if target.address.trim().is_empty() {
         return Err(CmdError::new("invalid", "O host não tem endereço."));
     }
-    let startup_script = target
-        .startup_snippet_id
-        .and_then(|id| match find(&items, id) {
+    let startup_script = target.startup_snippet_id.and_then(|id| {
+        match scope.get(target_vault, id).map(|i| &i.entity) {
             Some(Entity::Snippet(s)) => Some(s.script.clone()),
             _ => None,
-        });
-    let mut chain = vec![target.clone()];
-    let mut next = target.jump_host_id;
-    while let Some(id) = next {
+        }
+    });
+    let mut chain = vec![(target_vault, target.clone())];
+    let mut next = target.jump_host_id.map(|id| (target_vault, id));
+    while let Some((origin, id)) = next {
         if chain.len() > 4 || id == host_id {
             return Err(CmdError::new(
                 "invalid",
                 "Cadeia de jump hosts muito longa ou circular.",
             ));
         }
-        let jump = host(id)?;
-        next = jump.jump_host_id;
-        chain.push(jump);
+        let item = scope
+            .get(origin, id)
+            .ok_or_else(|| CmdError::new("not_found", "Jump host não encontrado."))?;
+        let (vault, jump) = as_host(item)?;
+        next = jump.jump_host_id.map(|id| (vault, id));
+        chain.push((vault, jump));
     }
     chain.reverse();
     let hops = chain
         .iter()
-        .map(|h| hop_for(&items, h))
+        .map(|(vault, h)| hop_for(&scope, *vault, h))
         .collect::<CmdResult<Vec<_>>>()?;
     Ok(Plan {
         hops,
@@ -402,6 +451,8 @@ pub fn remember_host_keys(vessel: &mut Vessel, keys: &[NewHostKey]) -> CmdResult
     if keys.is_empty() {
         return Ok(());
     }
+    // Trust decisions are personal: they live only in the personal vault, the only place pins
+    // are read from (see `Scope::pin`).
     let vault = vessel.personal_vault()?;
     let existing = vessel.items(Some(EntityKind::KnownHost))?;
     for key in keys {
@@ -413,12 +464,11 @@ pub fn remember_host_keys(vessel: &mut Vessel, keys: &[NewHostKey]) -> CmdResult
         });
         let id = existing
             .iter()
-            .find(|i| matches!(&i.entity, Entity::KnownHost(k) if k.host == key.host))
+            .find(|i| {
+                i.vault_id == vault
+                    && matches!(&i.entity, Entity::KnownHost(k) if k.host == key.host)
+            })
             .map(|i| i.id);
-        let vault = existing
-            .iter()
-            .find(|i| Some(i.id) == id)
-            .map_or(vault, |i| i.vault_id);
         vessel.save(vault, id, entity)?;
     }
     Ok(())
