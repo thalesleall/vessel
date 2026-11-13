@@ -120,6 +120,16 @@ powershell -File deploy\dev\lab.ps1 bot fingerprint
 
 ## 7. Agentes de IA (MCP)
 
+**Já testado diretamente pelo protocolo, em 13/11/2026:**
+- token inválido ou ausente → 401, e origem externa → 403;
+- leitura de status, cofres, itens e shells;
+- criação, edição, sync e exclusão de grupo, host, snippet e forward;
+- recusa de credenciais: senha, chave privada, passphrase (também em campos aninhados, desde a correção), e de criar identidade, chave ou host conhecido;
+- terminais PowerShell, CMD e WSL, `terminal_run`, Ctrl+C e `run_snippet`;
+- `connect_ssh` pedindo a impressão digital antes de confiar, e falhando sem credencial, porque o agente não consegue fornecer uma.
+
+O que falta conferir com a interface aberta:
+
 1. **Agentes de IA → Ativar.** Copie o comando do Claude Code e rode-o.
    - Para eu mesmo executar este roteiro, me autorize a ler o token em `%APPDATA%\dev.vessel.desktop\settings.json`.
 2. Peça ao agente:

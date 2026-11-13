@@ -276,7 +276,9 @@ async fn run() -> R<()> {
             println!("renomeado");
         }
         other => {
-            return Err(format!("unknown command {other:?}; run without arguments for help").into());
+            return Err(
+                format!("unknown command {other:?}; run without arguments for help").into(),
+            );
         }
     }
     Ok(())

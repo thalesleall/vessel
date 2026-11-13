@@ -476,7 +476,13 @@ fn tool_definitions() -> Vec<Value> {
             "Open a local terminal from a terminal profile or a shell. It appears as a tab in the app.",
             json!({
                 "profile_id": { "type": "string" },
-                "shell": { "type": "string", "enum": ["pwsh", "windows_powershell", "cmd", "git_bash", "wsl"] },
+                "shell": {
+                    "description": "A shell name, or a `shell` object exactly as list_shells returns it.",
+                    "oneOf": [
+                        { "type": "string", "enum": ["pwsh", "windows_powershell", "cmd", "git_bash", "wsl"] },
+                        { "type": "object" }
+                    ]
+                },
                 "distro": { "type": "string", "description": "WSL distribution, with shell=wsl." }
             }),
             &[],
@@ -593,19 +599,48 @@ pub fn redact(entity: &Entity) -> Value {
         .ok()
         .and_then(|mut v| v.get_mut("data").map(Value::take))
         .unwrap_or(Value::Null);
-    if let Value::Object(map) = &mut data {
-        for field in SECRET_FIELDS {
-            if let Some(v) = map.remove(*field) {
-                let present = match &v {
-                    Value::Null => false,
-                    Value::String(s) => !s.is_empty(),
-                    _ => true,
-                };
-                map.insert(format!("has_{field}"), Value::Bool(present));
-            }
-        }
-    }
+    redact_value(&mut data);
     data
+}
+
+fn is_secret_key(key: &str) -> bool {
+    SECRET_FIELDS.iter().any(|f| f.eq_ignore_ascii_case(key))
+}
+
+/// Replaces credential-named fields at any depth with `has_*` flags.
+fn redact_value(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            let secret_keys: Vec<String> =
+                map.keys().filter(|k| is_secret_key(k)).cloned().collect();
+            for key in secret_keys {
+                let present = match map.remove(&key) {
+                    Some(Value::Null) | None => false,
+                    Some(Value::String(s)) => !s.is_empty(),
+                    Some(_) => true,
+                };
+                map.insert(format!("has_{key}"), Value::Bool(present));
+            }
+            map.values_mut().for_each(redact_value);
+        }
+        Value::Array(items) => items.iter_mut().for_each(redact_value),
+        _ => {}
+    }
+}
+
+/// The first credential-named field at any depth.
+fn find_secret(value: &Value) -> Option<String> {
+    match value {
+        Value::Object(map) => map.iter().find_map(|(k, v)| {
+            if is_secret_key(k) {
+                Some(k.clone())
+            } else {
+                find_secret(v)
+            }
+        }),
+        Value::Array(items) => items.iter().find_map(find_secret),
+        _ => None,
+    }
 }
 
 fn item_json(item: &vessel_client::Item) -> Value {
@@ -620,14 +655,20 @@ fn item_json(item: &vessel_client::Item) -> Value {
 }
 
 fn reject_secrets(data: &Map<String, Value>) -> Result<(), String> {
-    for field in SECRET_FIELDS {
-        if data.contains_key(*field) {
-            return Err(format!(
-                "\"{field}\" is a credential: agents cannot read or set credentials in Vessel. Ask the user to set it in the app, or reference an existing identity/SSH key by id."
-            ));
+    // Checked at any depth so nothing credential-shaped is stored where the redaction or a
+    // future field could expose it.
+    match data.iter().find_map(|(k, v)| {
+        if is_secret_key(k) {
+            Some(k.clone())
+        } else {
+            find_secret(v)
         }
+    }) {
+        Some(field) => Err(format!(
+            "\"{field}\" is a credential: agents cannot read or set credentials in Vessel. Ask the user to set it in the app, or reference an existing identity/SSH key by id."
+        )),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 fn strip_derived(data: &mut Map<String, Value>) {
@@ -888,10 +929,14 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                         .conflicts
                         .iter()
                         .map(|f| {
-                            if SECRET_FIELDS.contains(&f.field.as_str()) || f.field == "*" {
+                            if is_secret_key(&f.field) || f.field == "*" {
                                 json!({ "field": f.field })
                             } else {
-                                json!({ "field": f.field, "kept": f.local, "discarded": f.remote })
+                                let mut kept = serde_json::to_value(&f.local).unwrap_or_default();
+                                let mut discarded = serde_json::to_value(&f.remote).unwrap_or_default();
+                                redact_value(&mut kept);
+                                redact_value(&mut discarded);
+                                json!({ "field": f.field, "kept": kept, "discarded": discarded })
                             }
                         })
                         .collect();
@@ -910,8 +955,23 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
         "open_terminal" => {
             let target = if let Some(id) = arg_str(args, "profile_id") {
                 LocalTarget::Profile(id.parse().map_err(|_| "invalid profile_id")?)
+            } else if let Some(obj @ Value::Object(_)) = args.get("shell") {
+                // The shape list_shells returns, e.g. {"kind":"wsl","distro":"Ubuntu"}.
+                LocalTarget::Shell(
+                    serde_json::from_value(obj.clone())
+                        .map_err(|e| format!("invalid shell: {e}"))?,
+                )
             } else {
-                let shell = match arg_str(args, "shell").unwrap_or("pwsh") {
+                let shell_arg = match args.get("shell") {
+                    None | Some(Value::Null) => "pwsh",
+                    Some(Value::String(s)) => s.as_str(),
+                    Some(_) => {
+                        return Err(
+                            "shell must be a string or a shell object from list_shells".into()
+                        );
+                    }
+                };
+                let shell = match shell_arg {
                     "pwsh" => Shell::Pwsh,
                     "windows_powershell" => Shell::WindowsPowershell,
                     "cmd" => Shell::Cmd,
@@ -932,11 +992,14 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
             let info = ops::open_local(state, target, 120, 32, true)
                 .await
                 .map_err(err)?;
+            // Wait for the first prompt so a following terminal_run is not typed into a shell
+            // that is still starting.
             wait_for_quiet(
                 state,
                 info.id,
+                0,
                 Duration::from_millis(600),
-                Duration::from_secs(5),
+                Duration::from_secs(15),
             )
             .await;
             Ok(serde_json::to_value(info).unwrap_or_default())
@@ -952,6 +1015,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                     wait_for_quiet(
                         state,
                         info.id,
+                        0,
                         Duration::from_millis(800),
                         Duration::from_secs(8),
                     )
@@ -984,7 +1048,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
             if !session.write(format!("{command}\r").into_bytes()) {
                 return Err("the terminal session has ended".into());
             }
-            let finished = wait_for_quiet(state, id, idle, timeout).await;
+            let finished = wait_for_quiet(state, id, start, idle, timeout).await;
             let output = to_plain_text(&session.output_since(start));
             Ok(json!({
                 "output": tail(&output, 20_000),
@@ -1084,12 +1148,21 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
 
 /// Waits until a session produced no output for `idle`, or `timeout` passed. Returns whether it
 /// went quiet (true) rather than timing out.
-async fn wait_for_quiet(state: &AppState, id: Uuid, idle: Duration, timeout: Duration) -> bool {
+/// Waits until the session has produced output beyond `since` and then stayed quiet for `idle`.
+/// The idle clock only starts with the first new output, so a slow-starting shell (WSL cold
+/// start) is not mistaken for a finished command.
+async fn wait_for_quiet(
+    state: &AppState,
+    id: Uuid,
+    since: u64,
+    idle: Duration,
+    timeout: Duration,
+) -> bool {
     let Some(session) = state.terms.get(&id) else {
         return true;
     };
     let started = Instant::now();
-    let mut last = session.produced();
+    let mut last = since;
     let mut last_change = Instant::now();
     loop {
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1098,7 +1171,7 @@ async fn wait_for_quiet(state: &AppState, id: Uuid, idle: Duration, timeout: Dur
             last = now;
             last_change = Instant::now();
         }
-        if !session.is_alive() || last_change.elapsed() >= idle {
+        if !session.is_alive() || (last != since && last_change.elapsed() >= idle) {
             return true;
         }
         if started.elapsed() >= timeout {
@@ -1160,6 +1233,23 @@ mod tests {
         assert!(reject_secrets(&data).is_ok());
         data.insert("password".into(), json!("p"));
         assert!(reject_secrets(&data).is_err());
+
+        // Nested or differently-cased credential fields are refused too.
+        let nested = json!({ "extra": { "Password": "p" } });
+        assert!(reject_secrets(nested.as_object().unwrap()).is_err());
+        let in_array = json!({ "list": [{ "passphrase": "p" }] });
+        assert!(reject_secrets(in_array.as_object().unwrap()).is_err());
+    }
+
+    #[test]
+    fn nested_credentials_are_redacted() {
+        let mut v =
+            json!({ "extra": { "password": "hunter2", "ok": 1 }, "l": [{ "private_key": "k" }] });
+        redact_value(&mut v);
+        let s = v.to_string();
+        assert!(!s.contains("hunter2") && !s.contains("\"k\""));
+        assert_eq!(v["extra"]["has_password"], true);
+        assert_eq!(v["extra"]["ok"], 1);
     }
 
     #[test]
