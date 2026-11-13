@@ -149,11 +149,33 @@ pub fn to_plain_text(bytes: &[u8]) -> String {
 
 /// ConPTY often moves to the next line with a cursor-position sequence (`ESC[row;colH`)
 /// instead of CR LF. For plain text, turn every move to a different row into a newline.
+/// The output may start mid-session (row unknown): then a row move after visible text on
+/// the current line also counts as a line break.
 fn row_moves_to_newlines(bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());
     let mut row: Option<u32> = None;
+    let mut line_has_text = false;
     let mut i = 0;
     while i < bytes.len() {
+        // OSC (e.g. window title): copy through, it is not visible text.
+        if bytes[i] == 0x1b && bytes.get(i + 1) == Some(&b']') {
+            let mut j = i + 2;
+            while j < bytes.len()
+                && bytes[j] != 0x07
+                && !(bytes[j] == 0x1b && bytes.get(j + 1) == Some(&b'\\'))
+            {
+                j += 1;
+            }
+            let end = if bytes.get(j) == Some(&0x1b) {
+                j + 2
+            } else {
+                j + 1
+            };
+            let end = end.min(bytes.len());
+            out.extend_from_slice(&bytes[i..end]);
+            i = end;
+            continue;
+        }
         if bytes[i] == 0x1b && bytes.get(i + 1) == Some(&b'[') {
             let mut j = i + 2;
             while j < bytes.len() && (0x30..=0x3f).contains(&bytes[j]) {
@@ -172,8 +194,13 @@ fn row_moves_to_newlines(bytes: &[u8]) -> Vec<u8> {
                     _ => None,
                 };
                 if let Some(r) = new_row {
-                    if row.is_some_and(|old| old != r) {
+                    let breaks = match row {
+                        Some(old) => old != r,
+                        None => line_has_text,
+                    };
+                    if breaks {
                         out.push(b'\n');
+                        line_has_text = false;
                     }
                     row = Some(r);
                     i = j + 1;
@@ -186,6 +213,9 @@ fn row_moves_to_newlines(bytes: &[u8]) -> Vec<u8> {
         }
         if bytes[i] == b'\n' {
             row = row.map(|r| r + 1);
+            line_has_text = false;
+        } else if bytes[i] >= 0x20 && bytes[i] != 0x7f {
+            line_has_text = true;
         }
         out.push(bytes[i]);
         i += 1;
@@ -205,6 +235,20 @@ mod plain_text_tests {
             "ciclo 1 do agente\nC:\\Users\\ana>"
         );
         assert_eq!(to_plain_text(b"a\r\nb\x1b[32mc\x1b[0m"), "a\nbc");
+    }
+
+    #[test]
+    fn real_conpty_output_starting_mid_session() {
+        // Captured from cmd.exe under ConPTY after typing `echo ola do agente`.
+        let raw =
+            b"echo ola do agente\r\n\x1b[?25lola do agente\x1b[7;1HC:\\Users\\ana>\x1b[?25h";
+        assert_eq!(
+            to_plain_text(raw),
+            "echo ola do agente\nola do agente\nC:\\Users\\ana>"
+        );
+        // Escape-only lines and window titles do not count as text.
+        let start = b"\x1b[?25l\x1b]0;cmd.exe\x07\x1b[4;1HC:\\>";
+        assert_eq!(to_plain_text(start), "C:\\>");
     }
 }
 

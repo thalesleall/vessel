@@ -294,3 +294,47 @@ async fn lab_interactive_shell_has_utf8_locale() {
     assert_eq!(out, "UTF-8\nação ✓");
     conn.close().await;
 }
+
+/// Dumps the raw bytes ConPTY produces for a command, to see how it encodes line breaks.
+#[test]
+#[ignore = "diagnostic; run by hand"]
+fn conpty_raw_dump() {
+    use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+    use std::io::{Read, Write};
+    let pty = native_pty_system()
+        .openpty(PtySize {
+            rows: 32,
+            cols: 120,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .unwrap();
+    let mut child = pty
+        .slave
+        .spawn_command(CommandBuilder::new("cmd.exe"))
+        .unwrap();
+    let mut reader = pty.master.try_clone_reader().unwrap();
+    let mut writer = pty.master.take_writer().unwrap();
+    let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let b2 = buf.clone();
+    std::thread::spawn(move || {
+        let mut chunk = [0u8; 4096];
+        while let Ok(n) = reader.read(&mut chunk) {
+            if n == 0 {
+                break;
+            }
+            b2.lock().unwrap().extend_from_slice(&chunk[..n]);
+        }
+    });
+    std::thread::sleep(Duration::from_millis(300));
+    writer.write_all(b"[1;1R").unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    let start = buf.lock().unwrap().len();
+    writer.write_all(b"echo ola do agente\r").unwrap();
+    std::thread::sleep(Duration::from_millis(1500));
+    let all = buf.lock().unwrap().clone();
+    println!("STARTUP: {:?}", String::from_utf8_lossy(&all[..start]));
+    println!("AFTER: {:?}", String::from_utf8_lossy(&all[start..]));
+    println!("PLAIN: {:?}", crate::terminal::to_plain_text(&all[start..]));
+    let _ = child.kill();
+}
