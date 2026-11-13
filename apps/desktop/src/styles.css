@@ -179,6 +179,7 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .tab .close:hover { background: var(--surface-3); color: var(--text); }
 .tab .state { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); flex: none; }
 .tab .state.dead { background: var(--text-3); }
+.sync-line.insecure { color: var(--danger); }
 .tabbar-tabs { display: flex; align-items: stretch; gap: 2px; min-width: 0; }
 .tab-home { min-width: auto; }
 .tab-new { min-width: auto; padding: 7px 10px; }

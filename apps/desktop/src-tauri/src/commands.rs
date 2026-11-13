@@ -97,15 +97,15 @@ pub async fn recover(
     email: String,
     recovery_key: String,
     new_password: String,
-) -> CmdResult<Status> {
+) -> CmdResult<String> {
     let mut vessel = state.vessel.lock().await;
-    vessel
+    // The used recovery key stops working: the new one is shown once.
+    let new_recovery = vessel
         .recover(&url, &email, &recovery_key, &new_password, &device_name())
         .await?;
-    let status = vessel.status();
     drop(vessel);
     after_auth(&state, &url, &email).await;
-    Ok(status)
+    Ok(new_recovery)
 }
 
 // -- local mode and migrations ------------------------------------------------------------------

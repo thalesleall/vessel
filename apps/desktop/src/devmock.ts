@@ -58,6 +58,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   status,
   local_settings: () => ({ last_server_url: "https://vessel.exemplo.com", last_email: "ana@exemplo.com", mcp_enabled: true, mcp_port: 47011, mcp_token: "vsl_9fK2mQ7xZpL0aB3cD5eF7gH9iJ1kL3mN5oP7qR9sT1u", mcp_allow_terminal_input: true, mcp_allow_writes: true }),
   unlock: () => { unlocked = true; return status(); },
+  recover: () => { signedIn = true; unlocked = true; return recoveryKey; },
   create_local: () => { signedIn = true; localMode = true; unlocked = true; return recoveryKey; },
   recover_local: () => { unlocked = true; return status(); },
   server_info: () => ({ name: "Vessel", version: "0.1.0", api_version: 1, server_id: "vessel.exemplo.com", signups: "open", first_user: false }),

@@ -126,3 +126,31 @@ async fn demoting_a_manager_rotates_the_vault_key() {
     bob.sync().await.unwrap();
     assert_eq!(version(&bob), before + 1);
 }
+
+/// A recovery key that was used may have leaked: recovery issues a new one and the old one
+/// stops working.
+#[tokio::test]
+async fn recovery_replaces_the_recovery_key() {
+    let url = agent_with(|_| {}).await;
+    let mut v = Vessel::in_memory().unwrap();
+    let first = v
+        .signup(&url, "alice@example.com", PW, "pc", None)
+        .await
+        .unwrap();
+    let mut pc2 = Vessel::in_memory().unwrap();
+    let second = pc2
+        .recover(&url, "alice@example.com", &first, "new password one 1", "pc-2")
+        .await
+        .unwrap();
+    assert_ne!(first, second);
+    let mut pc3 = Vessel::in_memory().unwrap();
+    assert!(
+        pc3.recover(&url, "alice@example.com", &first, "new password two 2", "pc-3")
+            .await
+            .is_err(),
+        "the used recovery key still works"
+    );
+    pc3.recover(&url, "alice@example.com", &second, "new password two 2", "pc-3")
+        .await
+        .unwrap();
+}

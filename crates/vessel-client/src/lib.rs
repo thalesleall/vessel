@@ -91,6 +91,9 @@ pub struct Status {
     pub is_server_admin: bool,
     /// Local-only mode: everything stays on this computer, nothing syncs.
     pub local: bool,
+    /// The saved server is reached over plain http on the network (from before https was
+    /// required): tokens and metadata travel in the clear.
+    pub insecure_server: bool,
 }
 
 pub struct Vessel {
@@ -173,6 +176,9 @@ impl Vessel {
             fingerprint: p.map(|p| p.material.public_keys.fingerprint().to_string()),
             is_server_admin: p.is_some_and(|p| p.is_server_admin),
             local: p.is_some_and(|p| p.local),
+            insecure_server: p.is_some_and(|p| {
+                !p.local && api::require_secure_transport(&p.server_url).is_err()
+            }),
         }
     }
 
@@ -414,7 +420,7 @@ impl Vessel {
         recovery_key: &str,
         new_password: &str,
         device_name: &str,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let recovery: RecoveryKey = recovery_key.parse()?;
         let info = server_info(server_url).await?;
         let email = normalize_email(email);
@@ -444,6 +450,7 @@ impl Vessel {
             &KdfParams::default(),
         )?;
         let device_key = DeviceKey::generate()?;
+        let (wrapped_recovery, new_recovery) = vessel_crypto::account::new_recovery_key(&account)?;
         let auth: AuthResponse = api
             .public(
                 Method::POST,
@@ -456,6 +463,8 @@ impl Vessel {
                         name: device_name.into(),
                         public_key: Bytes(device_key.public_key().to_vec()),
                     },
+                    wrapped_account_key_recovery: Bytes(wrapped_recovery),
+                    recovery_auth_token: Bytes(new_recovery.auth_token()?.to_vec()),
                 }),
             )
             .await?;
@@ -469,7 +478,8 @@ impl Vessel {
             device_key,
             Vec::new(),
         )
-        .await
+        .await?;
+        Ok(new_recovery.to_string())
     }
 
     #[allow(clippy::too_many_arguments)]

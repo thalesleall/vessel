@@ -19,6 +19,8 @@ export interface Status {
   is_server_admin: boolean;
   /** Local-only mode: no sync server. */
   local: boolean;
+  /** Saved server reached over plain http on the network. */
+  insecure_server: boolean;
 }
 
 export interface MigrationOutcome {
@@ -200,7 +202,7 @@ export const api = {
     invoke<string>("signup", { url, email, password, invite: invite || null }),
   login: (url: string, email: string, password: string) => invoke<Status>("login", { url, email, password }),
   recover: (url: string, email: string, recoveryKey: string, newPassword: string) =>
-    invoke<Status>("recover", { url, email, recoveryKey, newPassword }),
+    invoke<string>("recover", { url, email, recoveryKey, newPassword }),
   unlock: (password: string) => invoke<Status>("unlock", { password }),
   createLocal: (name: string, password: string) => invoke<string>("create_local", { name, password }),
   recoverLocal: (recoveryKey: string, newPassword: string) => invoke<Status>("recover_local", { recoveryKey, newPassword }),

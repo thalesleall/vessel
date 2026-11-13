@@ -60,6 +60,11 @@ function Sidebar() {
             <span class="dot" classList={{ busy: syncing(), err: !!syncError() }} />
             <span>{syncing() ? "Sincronizando…" : syncError() ? "Falha ao sincronizar" : lastSync() ? "Sincronizado" : "Conectado"}</span>
           </div>
+          <Show when={status()?.insecure_server}>
+            <div class="sync-line insecure" role="status" title="O servidor salvo usa http://. Na rede, tokens e metadados trafegam sem criptografia. Conecte de novo com um endereço https://.">
+              <Icon name="alert" size={13} /><span>Conexão sem HTTPS</span>
+            </div>
+          </Show>
         </Show>
         <div class="account-chip">
           <div class="avatar" style={{ width: "30px", height: "30px", "border-radius": "8px", display: "grid", "place-items": "center",

@@ -339,6 +339,15 @@ pub async fn refresh(
                 )
                 .optional()?;
             let Some((session_id, device_id, expires, public_key, revoked)) = row else {
+                // A refresh token that was already rotated away, presented again, means two
+                // parties hold this session (one of them stole it): end it for both.
+                let reused = conn.execute(
+                    "DELETE FROM sessions WHERE prev_refresh_hash = ?1",
+                    [hash_token(&req.refresh_token)],
+                )?;
+                if reused > 0 {
+                    tracing::warn!(device = %req.device_id, "refresh token reused; session ended");
+                }
                 return Err(AppError::unauthorized());
             };
             if uuid_from(device_id)? != req.device_id || expires < now() || revoked.is_some() {
@@ -522,11 +531,14 @@ pub async fn recovery_finish(
         .db(move |conn| {
             let tx = conn.transaction()?;
             tx.execute(
-                "UPDATE users SET password_file = ?1, wrapped_ak_master = ?2, kdf = ?3 WHERE id = ?4",
+                "UPDATE users SET password_file = ?1, wrapped_ak_master = ?2, kdf = ?3,
+                    wrapped_ak_recovery = ?4, recovery_auth_hash = ?5 WHERE id = ?6",
                 params![
                     password_file,
                     req.wrapped_account_key_master.as_slice(),
                     serde_json::to_string(&KdfParams::default())?,
+                    req.wrapped_account_key_recovery.as_slice(),
+                    recovery_auth_hash(req.recovery_auth_token.as_slice()).as_slice(),
                     user_id.as_bytes().as_slice()
                 ],
             )?;

@@ -92,7 +92,7 @@ pub fn rotate_session(conn: &Connection, session_id: &[u8]) -> AppResult<Tokens>
         refresh: new_token()?,
     };
     conn.execute(
-        "UPDATE sessions SET access_hash = ?1, access_expires = ?2, refresh_hash = ?3, refresh_expires = ?4 WHERE id = ?5",
+        "UPDATE sessions SET prev_refresh_hash = refresh_hash, access_hash = ?1, access_expires = ?2, refresh_hash = ?3, refresh_expires = ?4 WHERE id = ?5",
         params![
             hash_token(&tokens.access),
             tokens.access_expires,

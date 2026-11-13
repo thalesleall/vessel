@@ -144,6 +144,14 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
             "BEGIN; ALTER TABLE vaults ADD COLUMN rotation_due INTEGER NOT NULL DEFAULT 0; PRAGMA user_version = 2; COMMIT;",
         )?;
     }
+    if version < 3 {
+        // The refresh token a session had before its last rotation, to detect reuse.
+        conn.execute_batch(
+            "BEGIN; ALTER TABLE sessions ADD COLUMN prev_refresh_hash BLOB;
+             CREATE INDEX sessions_prev_refresh ON sessions(prev_refresh_hash);
+             PRAGMA user_version = 3; COMMIT;",
+        )?;
+    }
     Ok(())
 }
 

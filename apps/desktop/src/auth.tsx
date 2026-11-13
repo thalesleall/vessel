@@ -233,7 +233,8 @@ export function Connect(props: { onBack?: () => void }) {
       } else if (mode() === "signup") {
         setNewRecovery(await api.signup(url(), email(), password(), invite()));
       } else {
-        setStatus(await api.recover(url(), email(), recoveryKey(), password()));
+        // The used recovery key stopped working: show the new one before entering the app.
+        setNewRecovery(await api.recover(url(), email(), recoveryKey(), password()));
         toast("Senha redefinida. Os outros computadores precisam entrar de novo.", "success");
       }
     } catch (err) {

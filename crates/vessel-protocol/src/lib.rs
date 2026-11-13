@@ -276,6 +276,9 @@ pub struct RecoveryFinishRequest {
     pub upload: Bytes,
     pub wrapped_account_key_master: Bytes,
     pub device: NewDevice,
+    /// A recovery key that was used may have leaked: recovery always installs a new one.
+    pub wrapped_account_key_recovery: Bytes,
+    pub recovery_auth_token: Bytes,
 }
 
 /// `GET /v1/account`.
