@@ -95,13 +95,13 @@ O app faz toda a criptografia. O agente guarda e repassa apenas dados cifrados, 
 flowchart TB
     ia["Agentes de IA"]
     ssh["Servidores SSH"]
-    subgraph app["App Vessel · no seu computador"]
+    subgraph app["App Vessel"]
         mcp["Ponte MCP<br/>sem acesso a credenciais"]
         term["Terminais e SSH"]
         ui["Interface"]
         local["Cofre local<br/>cópia cifrada de tudo"]
     end
-    subgraph agente["Agente Vessel · no seu servidor"]
+    subgraph agente["Agente Vessel"]
         opaque["Login OPAQUE<br/>não vê a senha"]
         records["Registros cifrados"]
         history["Histórico assinado<br/>membros e chaves"]
@@ -118,7 +118,7 @@ Cada camada de chave protege a próxima. Só a última camada, os itens já cifr
 
 ```mermaid
 flowchart TB
-    subgraph pc["Só no seu computador"]
+    subgraph pc["No seu computador"]
         senha["Sua senha"] -->|"OPAQUE"| conta["Chave da conta"]
         rec["Chave de recuperação"] --> conta
         conta -->|"abre grants assinados"| cofre["Chave de cada cofre"]
