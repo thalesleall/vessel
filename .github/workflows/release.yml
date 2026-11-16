@@ -33,7 +33,7 @@ jobs:
         run: |
           if (-not $env:KEY) { throw "Falta o segredo TAURI_SIGNING_PRIVATE_KEY (veja docs/OPERATING.md, seção Atualizações)" }
           $pub = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).plugins.updater.pubkey
-          if ($pub -notmatch ^[A-Za-z0-9+/=]40) { throw "A chave pública do atualizador não está em tauri.conf.json (plugins.updater.pubkey)" }
+          if ($pub -notmatch '^[A-Za-z0-9+/=]{40,}$') { throw "A chave pública do atualizador não está em tauri.conf.json (plugins.updater.pubkey)" }
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -65,11 +65,14 @@ jobs:
         run: |
           $version = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
           New-Item -ItemType Directory -Force out | Out-Null
-          $installer = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
-          Copy-Item $installer.FullName "out/Vessel_${version}_x64-setup.exe"
+          # O instalador desta versão, pelo nome: a pasta pode guardar builds anteriores (cache).
+          $installer = "target/release/bundle/nsis/Vessel_${version}_x64-setup.exe"
+          if (-not (Test-Path $installer)) { throw "Instalador $installer não encontrado" }
+          if (-not (Test-Path "$installer.sig")) { throw "Assinatura do atualizador $installer.sig não encontrada" }
+          Copy-Item $installer "out/Vessel_${version}_x64-setup.exe"
           Copy-Item target/release/vessel-mcp.exe "out/vessel-mcp_${version}_x64.exe"
           # Feed do atualizador: a versão nova, onde baixá-la e a assinatura do instalador.
-          $sig = (Get-Content "$($installer.FullName).sig" -Raw).Trim()
+          $sig = (Get-Content "$installer.sig" -Raw).Trim()
           $url = "https://github.com/${{ github.repository }}/releases/download/v$version/Vessel_${version}_x64-setup.exe"
           $feed = [ordered]@{
             version = $version
