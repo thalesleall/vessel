@@ -1,4 +1,4 @@
-//! Regression tests for findings of the security audit (docs/NIGHT-LOG.md, run-1).
+//! Regression tests: sign-up invites, key rotation after a member leaves, and trust decisions.
 
 use vessel_client::model::{Entity, Host, Snippet};
 use vessel_client::{Role, SignupMode, Vessel};
@@ -18,7 +18,7 @@ async fn signup(url: &str, email: &str, invite: Option<String>) -> Vessel {
     v
 }
 
-/// agent/signup-vault-invite-not-consumed
+/// A vault invite admits one sign-up only, and none once its vault is gone.
 #[tokio::test]
 async fn a_vault_invite_admits_one_signup_only() {
     let url = agent(SignupMode::InviteOnly).await;
@@ -57,7 +57,7 @@ async fn a_vault_invite_admits_one_signup_only() {
     );
 }
 
-/// agent/vault-remove-during-rotation-keeps-new-key (rotation_due)
+/// A member who leaves must not keep a usable key: the next manager sync rotates it.
 #[tokio::test]
 async fn a_member_leaving_makes_the_next_manager_sync_rotate() {
     let url = agent(SignupMode::Open).await;
@@ -98,7 +98,7 @@ async fn a_member_leaving_makes_the_next_manager_sync_rotate() {
     );
 }
 
-/// vessel-client/items/cross-vault-record-id-shadowing
+/// An id present in two vaults is never resolved to whichever copy comes first.
 #[tokio::test]
 async fn an_id_reused_in_another_vault_is_refused() {
     let url = agent(SignupMode::Open).await;

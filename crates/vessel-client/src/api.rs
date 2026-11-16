@@ -274,7 +274,7 @@ mod transport_tests {
         ] {
             assert!(check(ok).is_ok(), "{ok} refused");
         }
-        // Audit round 2: prefix matching let all of these reach another host over plain HTTP.
+        // Matching by prefix would let all of these reach another host over plain HTTP.
         for bad in [
             "http://192.168.1.10:8080",
             "http://127.0.0.1@evil.com",

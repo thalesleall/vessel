@@ -1,4 +1,4 @@
-//! Signed, hash-chained membership history of a vault (see `docs/ARCHITECTURE.md` §7.3).
+//! Signed, hash-chained membership history of a vault (see `docs/ARCHITECTURE.md` §5.3).
 //!
 //! Every change to a vault's members is an event signed by the member who made it and chained to
 //! the previous event by hash. [`replay`] validates a whole chain and returns the resulting roles,

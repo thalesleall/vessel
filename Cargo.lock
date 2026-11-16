@@ -6073,7 +6073,6 @@ dependencies = [
  "anyhow",
  "axum",
  "base64 0.23.1",
- "futures-util",
  "rusqlite",
  "serde",
  "serde_json",
@@ -6135,7 +6134,6 @@ dependencies = [
 name = "vessel-desktop"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "axum",
  "base64 0.23.1",
  "dirs",
@@ -6146,7 +6144,6 @@ dependencies = [
  "strip-ansi-escapes",
  "tauri",
  "tauri-build",
- "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tracing-subscriber",

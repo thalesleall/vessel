@@ -1,4 +1,4 @@
-//! Three-way, field-level merge (`docs/ARCHITECTURE.md` §9.4).
+//! Three-way, field-level merge (`docs/ARCHITECTURE.md` §7.4).
 //!
 //! Fields changed on one side only are taken from that side. A field changed on both sides to
 //! different values keeps the local value (the edit about to be pushed) and is reported as a

@@ -8,3 +8,4 @@ deploy/.env
 *.db-shm
 deploy/dev/.lab/
 apps/desktop/src-tauri/binaries/
+.claude/

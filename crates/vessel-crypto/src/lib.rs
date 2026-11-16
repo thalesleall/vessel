@@ -1,6 +1,6 @@
 //! Client-side cryptography for Vessel.
 //!
-//! Key hierarchy (see `docs/ARCHITECTURE.md` §5):
+//! Key hierarchy (see `docs/ARCHITECTURE.md` §3):
 //!
 //! ```text
 //! password ──OPAQUE──► export_key ──HKDF──► master KEK ─┐

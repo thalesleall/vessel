@@ -1,4 +1,4 @@
-//! Pull and push of encrypted records (`docs/ARCHITECTURE.md` §9).
+//! Pull and push of encrypted records (`docs/ARCHITECTURE.md` §7).
 
 use axum::Json;
 use axum::extract::{Path, Query, State};

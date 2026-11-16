@@ -12,7 +12,7 @@ const host = (n: number, label: string, address: string, extra: Record<string, u
   entity: { type: "host", data: {
     label, address, port: null, protocol: "ssh", group_id: null, identity_id: id(30), username: "deploy", password: null,
     ssh_key_id: null, jump_host_id: null, tags: [], os: "linux", color: "", notes: "", startup_snippet_id: null,
-    keepalive_secs: null, agent_forwarding: false, ...extra,
+    keepalive_secs: null, ...extra,
   } },
 });
 

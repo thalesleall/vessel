@@ -1,4 +1,4 @@
-//! Synced entities (`docs/ARCHITECTURE.md` §8) and the three-way merge used on sync conflicts.
+//! Synced entities (`docs/ARCHITECTURE.md` §6) and the three-way merge used on sync conflicts.
 //!
 //! An entity is serialized to JSON (`{"type": ..., "data": {...}}`), then sealed into a record
 //! envelope. Every struct uses `#[serde(default)]`, so older and newer clients can read each
@@ -145,7 +145,6 @@ pub struct Host {
     pub notes: String,
     pub startup_snippet_id: Option<Uuid>,
     pub keepalive_secs: Option<u32>,
-    pub agent_forwarding: bool,
     #[serde(flatten)]
     pub extra: Extra,
 }

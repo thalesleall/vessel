@@ -1,4 +1,4 @@
-//! Vault key grants: how a vault key reaches each member (see `docs/ARCHITECTURE.md` §5.4).
+//! Vault key grants: how a vault key reaches each member (see `docs/ARCHITECTURE.md` §3.4).
 //!
 //! The vault key is sealed to the recipient's X25519 key with HPKE (base mode,
 //! X25519-HKDF-SHA256 / HKDF-SHA256 / ChaCha20-Poly1305) and the whole grant is signed with the

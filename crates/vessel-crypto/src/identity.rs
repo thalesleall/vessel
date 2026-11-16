@@ -181,7 +181,7 @@ impl fmt::Debug for DeviceKey {
     }
 }
 
-/// A short, human-comparable digest of a user's public keys (see `docs/ARCHITECTURE.md` §7.4).
+/// A short, human-comparable digest of a user's public keys (see `docs/ARCHITECTURE.md` §5.2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Fingerprint(pub [u8; FINGERPRINT_LEN]);
 

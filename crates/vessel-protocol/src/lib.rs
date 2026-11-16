@@ -1,4 +1,4 @@
-//! Wire types of the Vessel sync API (v1). See `docs/ARCHITECTURE.md` §9–§10.
+//! Wire types of the Vessel sync API (v1). See `docs/ARCHITECTURE.md` §7–§8.
 //!
 //! Binary values travel as unpadded base64url strings ([`Bytes`]). Every type here is safe to
 //! show to the server: plaintext user data never appears in this crate.

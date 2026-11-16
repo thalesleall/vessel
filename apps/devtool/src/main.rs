@@ -4,9 +4,11 @@
 //! password comes from `--password` or `VESSEL_DEV_PASSWORD`. Not for real accounts.
 //!
 //! ```text
-//! vessel-dev signup <server-url> <email>     create the account (prints the recovery key)
+//! vessel-dev signup <server-url> <email> [invite-or-installation-code]
+//!                                            create the account (prints the recovery key)
 //! vessel-dev login  <server-url> <email>     sign this db in to an existing account
 //! vessel-dev status | fingerprint | sync
+//! vessel-dev token                           print this account's access token (for raw API tests)
 //! vessel-dev vaults                          list vaults and roles
 //! vessel-dev create-vault <name>
 //! vessel-dev invite <vault> <viewer|editor|admin> [email]   prints an invite link
@@ -103,7 +105,7 @@ async fn run() -> R<()> {
             "{}",
             include_str!("main.rs")
                 .lines()
-                .take(22)
+                .take(25)
                 .collect::<Vec<_>>()
                 .join("\n")
         );
@@ -128,7 +130,7 @@ async fn run() -> R<()> {
                     &arg(rest, 1, "email")?,
                     &password()?,
                     "vessel-dev",
-                    None,
+                    rest.get(2).cloned(),
                 )
                 .await?;
             println!("conta criada; chave de recuperação: {recovery}");
@@ -158,6 +160,11 @@ async fn run() -> R<()> {
 
     match cmd.as_str() {
         "status" => println!("{}", serde_json::to_string_pretty(&v.status())?),
+        // For tests that call the API directly as this account.
+        "token" => {
+            let (_url, token) = v.event_credentials().await?;
+            println!("{token}");
+        }
         "fingerprint" => println!("{}", v.fingerprint()?),
         "sync" => {
             let r = v.sync().await?;
