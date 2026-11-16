@@ -65,6 +65,38 @@ impl Vessel {
         Ok(self.store.get(V2_VAULTS_KEY)?.unwrap_or_default())
     }
 
+    /// Whether a record from the server is one this device cannot check: it is sealed under a
+    /// key version this device does not hold, and it would replace a copy this device has.
+    /// Legitimately that only happens while a key rotation is under way and the new grant has
+    /// not been fetched yet, so the caller fetches grants and tries again later.
+    pub(crate) fn unverifiable_replacement(&self, vault: &Uuid, record: &RecordDto) -> Result<bool> {
+        Ok(self.vault_key(vault, record.key_version).is_err()
+            && self.store.record(vault, &record.id)?.is_some())
+    }
+
+    /// Opens a record that just came from the server, before it may replace what this device
+    /// has. Stricter than [`Self::open_entity`], which also reads records already stored:
+    ///
+    /// - A record under a key version this device does not hold has nothing to be checked
+    ///   against. It never replaces a local copy, and a deletion is never taken on faith:
+    ///   otherwise a server could hide any record by relabeling it with a made-up key version.
+    /// - A format 1 envelope (which authenticates neither the record version nor the deletion
+    ///   flag) never replaces a format 2 copy: every app writes format 2, so that is a replay.
+    pub(crate) fn open_remote(&self, vault: &Uuid, record: &RecordDto) -> Result<Option<Entity>> {
+        let refuse = |why: &'static str| Err(vessel_crypto::CryptoError::Malformed(why).into());
+        let legacy = format_version(record.blob.as_slice()) == Some(FORMAT_V1);
+        let local = self.store.record(vault, &record.id)?;
+        if self.vault_key(vault, record.key_version).is_err() && (local.is_some() || record.deleted) {
+            return refuse("a record under a key version this device does not hold");
+        }
+        if legacy
+            && local.is_some_and(|l| format_version(l.blob.as_slice()) != Some(FORMAT_V1))
+        {
+            return refuse("an old-format copy of a record this device has in the current format");
+        }
+        self.open_entity(vault, record)
+    }
+
     pub(crate) fn open_entity(&self, vault: &Uuid, record: &RecordDto) -> Result<Option<Entity>> {
         let legacy = format_version(record.blob.as_slice()) == Some(FORMAT_V1);
         if legacy && self.v2_vaults()?.contains(vault) {
@@ -74,7 +106,8 @@ impl Vessel {
             .into());
         }
         if record.deleted {
-            // Format 2 deletions are authenticated: the server cannot fake one.
+            // Format 2 deletions are authenticated when the key is held. Records from the server
+            // go through `open_remote` first, which refuses a deletion whose key is not held.
             if !legacy && let Ok(key) = self.vault_key(vault, record.key_version) {
                 open_record(
                     key,
