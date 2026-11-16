@@ -23,7 +23,7 @@ O cursor do terminal é o elemento que se repete em todo o app:
 
 ## Cores
 
-Cada tema tem três cores definidas pelo cliente e neutros derivados delas.
+Cada tema tem três cores principais e neutros derivados delas.
 
 | Papel | Escuro ("Noite") | Claro ("Dia") |
 |---|---|---|
@@ -34,8 +34,6 @@ Cada tema tem três cores definidas pelo cliente e neutros derivados delas.
 | Linhas | `#1D2433` / `#2A3346` | `#E8E0EB` / `#D3C6D8` |
 | Texto | `#EDF0F7` / `#A3ACC2` / `#687392` | `#400849` / `#6D5673` / `#9C8BA1` |
 | Perigo | `#FF6B5E` | `#C2183A` (diferente do laranja de sinal) |
-
-Observação: o cliente chamou `#37B0DE` de "pastel orchid pink", mas o código é um azul-celeste. Usamos o código.
 
 ## Tipografia
 
@@ -56,18 +54,14 @@ Observação: o cliente chamou `#37B0DE` de "pastel orchid pink", mas o código 
   | Campos e botões | 8 px |
   | Selos | 6 px |
 
-## Onde está a ousadia
+## Movimento
 
-Na **tela de boas-vindas**: duas escolhas ilustradas em traço, com um único momento de animação, o desenho dos traços ao abrir. Respeita "reduzir movimento". O resto do app fica quieto.
+A **tela de boas-vindas** tem o único momento de animação longa: duas escolhas ilustradas em traço, desenhadas ao abrir. No resto do app as transições são curtas e discretas. Tudo respeita a preferência "reduzir movimento" do sistema.
 
-## Revisão contra o padrão genérico
+## O que evitar
 
-- Fundo quase preto com verde ácido é um clichê, mas foi pedido pelo cliente. Para não virar o clichê, o cobalto domina a estrutura e o lima fica restrito ao papel de "sinal".
-- Removidos:
-  - gradiente nos botões e no logo, e brilho no logo;
-  - lavagem radial no fundo das telas de login;
-  - títulos de seção em caixa alta espaçada;
-  - metadados com ponto médio;
-  - sombra igual em todos os cartões;
-  - a fonte Inter, usada por padrão em todo lugar.
-- A fonte mono foi mantida só onde o conteúdo é código.
+- A cor de sinal em áreas grandes: ela é do cursor, do foco e do que está vivo.
+- Gradientes e brilho em botões e no logo, e fundos com lavagem radial.
+- Títulos de seção em caixa alta espaçada e metadados separados por ponto médio.
+- A mesma sombra em todos os cartões: a hierarquia vem das superfícies e das linhas.
+- Fonte mono fora de conteúdo que é código.

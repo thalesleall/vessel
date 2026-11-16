@@ -1,598 +1,302 @@
-# Arquitetura e Protocolo — Terminal + Agente de Sync Self-Hosted
+# Arquitetura e protocolo
 
-> Status: **v0.1 implementada** · Data: 2026-11-12
-
----
-
-## 0. O que a v0.1 implementa, e onde ela difere deste documento
-
-Este documento continua sendo a referência do desenho. A primeira implementação seguiu-o com estas diferenças deliberadas:
-
-| Tema | Desenho original | Implementado na v0.1 | Motivo |
-|---|---|---|---|
-| Banco do agente | Postgres ou SQLite | **Só SQLite** (WAL), um escritor | `rusqlite` e `sqlx` não convivem no mesmo build; SQLite atende bem um servidor self-hosted. Postgres fica para depois. |
-| Organizações | Orgs com cofres | **Compartilhamento por cofre** (convite → aprovação → grant). Não há entidade "org". | Mesmo poder com menos conceitos; orgs podem agrupar cofres depois. |
-| Segredos locais do dispositivo | Windows Credential Manager | Device key e refresh token **cifrados com a chave da conta** no SQLite local | Funciona igual em Windows/macOS/Linux; só abrem depois do desbloqueio. |
-| Serialização do texto claro | CBOR | **JSON** (`{"type": ..., "data": {...}}`) dentro do envelope | Depuração mais simples; o envelope é versionado, dá para trocar. |
-| `entity_type` | Na AAD | **Dentro do texto cifrado** | Quem lê só conhece o tipo depois de decifrar (§5.3). |
-| Recuperação de senha | Só a chave de recuperação embrulha o AK | Também um **token de autenticação derivado da chave** (`HKDF(RK)`); o servidor guarda `SHA-256(token)` e libera o re-registro OPAQUE | Sem isso, quem esqueceu a senha não consegue nem se autenticar. |
-| Divisão de painéis no terminal | Previsto | Ainda não (abas, sim) | Próxima iteração. |
-| Agentes de IA | Não previsto | **Servidor MCP nativo no desktop** (§14) | Pedido durante a implementação. |
-| Uso sem servidor | Não previsto | **Modo local** com migração nos dois sentidos (§15) | Para quem não quer manter um agente. |
-
----
+Este documento descreve o Vessel como ele está implementado. Para operar um servidor, veja `docs/OPERATING.md`; para testar, `docs/TESTING.md`.
 
 ## 1. Visão geral
 
-Dois produtos que falam um único protocolo:
-
 | Componente | O que é | Onde roda |
 |---|---|---|
-| **Desktop** | App de terminal em Rust (Tauri 2). Terminais locais (PowerShell, CMD, WSL, Git Bash) e conexões SSH. UI no estilo "hosts + abas + painéis". | Cada PC do usuário |
-| **Agente** | Servidor de sincronização *zero-knowledge*. Guarda apenas blobs cifrados, chaves embrulhadas e metadados mínimos. | Container Docker self-hosted |
+| **App** (`apps/desktop`) | Terminal e cliente SSH em Rust (Tauri 2) com interface em SolidJS. Faz toda a criptografia. | No computador de cada pessoa |
+| **Agente** (`apps/agent`) | Servidor de sincronização. Guarda registros cifrados, chaves embrulhadas e metadados mínimos. | Num contêiner que você hospeda |
+| **Ponte MCP** (`apps/mcp-bridge`) | Liga assistentes de IA que falam stdio ao servidor MCP do app. | No computador de cada pessoa |
 
-O usuário configura o app com: **URL do servidor + e-mail + senha mestre**. Todo dado de usuário (hosts, grupos, identidades, chaves SSH, snippets, perfis de terminal, configurações) é cifrado **no dispositivo** antes de sair dele. Três PCs logados na mesma conta veem o mesmo ambiente; os terminais em si continuam sendo processos locais de cada máquina.
+O app pode ser usado sem agente (modo local, §11). Com um agente, a pessoa informa **endereço do servidor, e-mail e senha**. Todo dado de usuário (hosts, grupos, identidades, chaves SSH, snippets, perfis de terminal, redirecionamentos, configurações) é cifrado no dispositivo antes de sair dele. Os terminais continuam sendo processos locais de cada máquina: o que sincroniza é a configuração, não as sessões.
 
-### 1.1 Objetivos
+Objetivos:
 
-- Ambiente idêntico entre dispositivos, com sync quase em tempo real.
-- Times e cofres compartilhados com papéis.
-- O agente comprometido **não** revela conteúdo (nem endereços, nem labels, nem portas).
-- App leve e rápido (alvo: < 20 MB instalado, abrir terminal em < 150 ms).
-- Self-hosting simples: `docker compose up` com Postgres ou SQLite.
+- o mesmo ambiente em todos os dispositivos, com sincronização quase em tempo real;
+- cofres compartilhados com papéis;
+- um agente comprometido não revela conteúdo, nem endereços, nomes ou portas;
+- hospedagem simples: um binário com SQLite atrás de um proxy com HTTPS.
 
-### 1.2 Não-objetivos (v1)
+Fora do escopo: sincronizar sessões de terminal ou histórico de saída, gravação de sessões, SFTP, federação entre servidores e clientes para celular.
 
-- Sincronizar sessões de terminal em execução ou histórico de saída.
-- Gravação/replay de sessões, IA no terminal, SFTP (avaliar depois).
-- Federação entre servidores diferentes.
-- Clientes mobile (o protocolo não deve impedir, mas não é foco).
-
----
-
-## 2. Princípios de desenho
-
-| Tema | Decisão |
-|---|---|
-| Onde mora a criptografia | Num crate Rust compartilhado por app e agente (o agente só usa tipos e validação, nunca chaves). |
-| Chaves de cofre | Uma chave simétrica por **cofre**, entregue a cada membro por HPKE e assinada por quem concede o acesso. |
-| Registros | Cada registro aponta para `vault_id` + `key_version`. |
-| O que fica cifrado | **O registro inteiro.** O servidor vê só `id`, `vault_id`, versão e tamanho. |
-| Login | OPAQUE: o servidor nunca vê a senha nem um verificador dela. |
-| Sincronização | Cursor **monotônico do servidor** por cofre (`seq`), sem depender do relógio do cliente. |
-| Tempo real | WebSocket nativo no agente, sem serviço extra. |
-| Saída de membros | Rotação de chave versionada (`key_version`) ao remover um membro. |
-| Evolução do formato | Envelope com campo de versão desde o dia 1. |
-
----
-
-## 3. Estrutura do repositório
-
-```
-/
-├─ crates/
-│  ├─ vessel-crypto/      # primitivas, envelopes, embrulho de chaves, OPAQUE (cliente)
-│  ├─ vessel-model/       # entidades de domínio + (de)serialização + migrações de schema
-│  ├─ vessel-protocol/    # tipos da API HTTP/WS (serde), códigos de erro, versões
-│  └─ vessel-sync/        # motor de sync do cliente (fila de push, pull, merge)
-├─ apps/
-│  ├─ desktop/            # Tauri 2 (src-tauri em Rust + ui/ em SolidJS)
-│  └─ agent/              # axum + sqlx, binário único, Dockerfile
-├─ docs/
-│  └─ ARCHITECTURE.md
-└─ Cargo.toml             # workspace
-```
-
-Regra: **app e agente dependem de `vessel-protocol`**; só o app depende de `vessel-crypto` com chaves privadas. O agente usa de `vessel-crypto` apenas o lado servidor do OPAQUE e validação de formato.
-
----
-
-## 4. Modelo de ameaças
+## 2. Modelo de ameaças
 
 | Adversário | Pode | Não deve conseguir |
 |---|---|---|
-| Servidor/agente comprometido (ou operador curioso) | Ler o banco, ver tráfego após TLS, alterar respostas | Ler qualquer conteúdo; obter a senha mestre; fazer ataque offline de dicionário eficiente |
-| Atacante de rede | Interceptar tráfego | Nada além do que TLS protege |
-| Membro removido de um cofre | Ter guardado a chave antiga | Ler registros criados/alterados após a remoção |
-| Dispositivo roubado e bloqueado | Copiar disco | Decifrar o cofre local sem senha mestre ou credencial do SO |
-| Servidor malicioso trocando chaves públicas | Entregar uma chave pública falsa num convite | Passar despercebido se a impressão digital for verificada (ver §7.4) |
+| Agente comprometido ou operador curioso | Ler o banco, ver o tráfego depois do TLS, alterar ou reter respostas | Ler conteúdo; obter a senha; trocar, falsificar ou devolver versões antigas de registros sem ser recusado; entregar a chave de um cofre a quem não é membro |
+| Atacante de rede | Interceptar tráfego | Nada além do que o TLS protege |
+| Membro removido de um cofre | Ter guardado a chave antiga | Ler o que for escrito depois da remoção |
+| Outro membro de um cofre compartilhado | Editar itens do cofre | Fazer o app usar credenciais ou confirmações de confiança de outro cofre sem avisar (§9.3) |
+| Dispositivo roubado e bloqueado | Copiar o disco | Decifrar o cofre local sem a senha |
+| Assistente de IA conectado por MCP | Chamar as ferramentas liberadas | Ler ou gravar credenciais; aceitar chaves de servidor; executar comandos sem a permissão de digitar (§10) |
 
-Fora do escopo: dispositivo desbloqueado com malware; servidor que nega serviço ou apaga dados (mitigado por backups e cache local).
+O que o agente **consegue** fazer e o desenho não impede:
 
----
+- negar serviço, reter alterações ou parar de listar um cofre (o app então remove a cópia local dele, como faria numa remoção legítima);
+- encerrar a sessão de um dispositivo, o que faz o app apagar os dados locais daquela conta;
+- ver metadados: e-mails, nomes de dispositivos, quem é membro de qual cofre e com qual papel, datas, quantidade e tamanho aproximado dos registros.
 
-## 5. Criptografia
+Um dispositivo desbloqueado com malware também está fora do escopo.
 
-### 5.1 Primitivas
+## 3. Criptografia
 
-| Uso | Algoritmo | Crate |
-|---|---|---|
-| Cifra simétrica de registros | XChaCha20-Poly1305 (nonce aleatório de 24 bytes) | `chacha20poly1305` |
-| Embrulho de chave para um destinatário | HPKE RFC 9180: X25519 + HKDF-SHA256 + ChaCha20-Poly1305 | `hpke` |
-| Assinaturas (concessões, dispositivos) | Ed25519 | `ed25519-dalek` |
-| Login sem enviar senha | OPAQUE (RFC 9807) com Argon2id como KSF | `opaque-ke`, `argon2` |
-| Derivação | HKDF-SHA256 | `hkdf` |
-| Aleatoriedade | CSPRNG do SO | `rand_core::OsRng` |
-| Zeragem de segredos em memória | — | `zeroize`, `secrecy` |
+Tudo fica em `crates/vessel-crypto`. O agente usa desse crate só o lado servidor do OPAQUE e as validações de formato e assinatura; nunca tem uma chave que decifre dados.
 
-Parâmetros Argon2id iniciais: `m = 64 MiB, t = 3, p = 1` (ajustáveis por conta e versionados).
+### 3.1 Primitivas
 
-### 5.2 Hierarquia de chaves
-
-```
-senha mestre
-   │  OPAQUE (Argon2id no cliente)
-   ▼
-export_key (32 B, só o cliente conhece)
-   │  HKDF("vessel/v1/master-kek")
-   ▼
-MK  — Master KEK ───────────────┐
-                                │ embrulha
-Recovery Key (RK, 32 B aleatória, mostrada ao usuário uma vez)
-                                │ embrulha
-                                ▼
-AK  — Account Key (32 B aleatória, simétrica)
-   │ cifra
-   ├─► chave privada X25519 do usuário  (UXK)  → recebe chaves de cofre
-   └─► chave privada Ed25519 do usuário (USK)  → assina concessões
-
-VK  — Vault Key (32 B aleatória, uma por cofre e por key_version)
-   │ embrulhada com HPKE para a UXK pública de cada membro
-   ▼
-registros do cofre (XChaCha20-Poly1305)
-```
-
-- O **cofre pessoal** é só um cofre com um único membro. Não existe caminho especial.
-- Trocar a senha mestre = reembrulhar o AK com um novo MK. Nenhum dado é recifrado.
-- A Recovery Key permite recuperar a conta sem a senha mestre. Ela também embrulha o AK.
-
-### 5.3 Envelope de registro
-
-Todo blob armazenado no agente segue um formato binário versionado:
-
-```
- 0      1        2            26                         N
- ├──────┼────────┼────────────┼──────────────────────────┤
- │ ver  │ alg    │ nonce(24)  │ ciphertext + tag(16)     │
- │ 0x01 │ 0x01   │            │                          │
-```
-
-AAD (dados associados, não transmitidos, recomputados pelos dois lados):
-
-```
-"vessel/v1/record" || ver || alg || vault_id(16) || record_id(16) || key_version(u32 BE)
-```
-
-Isso impede que o servidor troque blobs entre registros, cofres ou versões de chave sem detecção. O cabeçalho (`ver`, `alg`) também é autenticado, o que bloqueia *downgrade*. O `entity_type` fica **dentro** do texto claro e não na AAD, porque quem lê só conhece o tipo depois de decifrar.
-
-O texto claro é o registro serializado com **CBOR** e com *padding* até múltiplo de 256 bytes, para reduzir o vazamento por tamanho.
-
-### 5.4 Concessão de chave de cofre (grant)
-
-```
-Grant {
-  vault_id, key_version,
-  recipient_user_id, recipient_xpub_fingerprint,
-  hpke_enc,            // encapsulated key
-  wrapped_vk,          // HPKE.Seal(recipient_xpub, info="vessel/v1/vk-grant"||vault_id||key_version, VK)
-  granter_user_id,
-  signature            // Ed25519(USK_granter, todos os campos acima)
-}
-```
-
-O destinatário só aceita o grant se a assinatura for de um membro com papel `admin` ou `owner` naquele cofre, segundo o histórico assinado de membros (§7.3).
-
----
-
-## 6. Autenticação, dispositivos e sessões
-
-### 6.1 Cadastro
-
-1. O cliente roda o registro OPAQUE e obtém `export_key`.
-2. Deriva o MK. Gera AK, RK, UXK e USK.
-3. Envia ao servidor:
-   - o registro OPAQUE;
-   - `AK` embrulhado por MK e `AK` embrulhado por RK;
-   - as chaves públicas UXK e USK, e as privadas cifradas pelo AK;
-   - o cofre pessoal com o grant para si mesmo.
-4. Mostra a Recovery Key para o usuário guardar.
-
-### 6.2 Login num dispositivo novo
-
-1. URL do servidor + e-mail + senha → OPAQUE login (2 round-trips) → `export_key` + chave de sessão.
-2. O servidor emite um `access_token` (15 min) e um `refresh_token` vinculado ao `device_id`.
-3. O dispositivo gera um par Ed25519 próprio (**device key**) e registra a chave pública. O refresh exige assinatura com essa chave, o que torna um token roubado inútil sem o dispositivo.
-4. O cliente baixa o AK embrulhado, desembrulha com o MK, decifra UXK/USK, baixa os grants e, por fim, o pull dos cofres.
-
-### 6.3 Desbloqueio local
-
-O MK depende do OPAQUE, que exige o servidor. Para o app abrir **offline**, existe uma chave de desbloqueio local separada:
-
-- No login, o cliente gera um `local_salt` e deriva `LK = Argon2id(senha mestre, local_salt)`. O AK é guardado no disco embrulhado por LK.
-- O app abre bloqueado. A senha mestre deriva o LK e desembrulha o AK sem precisar da rede; se o desembrulho falhar, a senha está errada.
-- A device key e o refresh token ficam no SQLite local, **cifrados com a chave da conta**. Só abrem depois do desbloqueio (ver §0).
-- Numa fase posterior, o Windows Hello pode guardar uma segunda cópia do AK protegida pelo TPM, para desbloqueio sem digitar a senha.
-- Se a senha mestre mudar em outro dispositivo, o desbloqueio local continua com a senha antiga até o próximo login online, que regenera o LK.
-- Bloqueio automático por inatividade (configurável).
-
-### 6.4 Gestão de dispositivos
-
-- Listar e revogar dispositivos. Revogar invalida tokens imediatamente.
-- Revogar não recifra dados, já que o dispositivo tinha as chaves. Para isso existe a rotação do §7.5.
-
----
-
-## 7. Cofres, times e permissões
-
-### 7.1 Conceitos
-
-- **Organização (time):** grupo de usuários com um dono. Agrupa cofres e convites.
-- **Cofre:** unidade de compartilhamento e de chave. Um usuário pode ter acesso a vários.
-- **Papéis por cofre:**
-
-| Papel | Ler | Editar registros | Gerenciar membros | Rotacionar/excluir cofre |
-|---|---|---|---|---|
-| `viewer` | ✓ | | | |
-| `editor` | ✓ | ✓ | | |
-| `admin` | ✓ | ✓ | ✓ | ✓ |
-| `owner` | ✓ | ✓ | ✓ | ✓ (único que transfere posse) |
-
-O servidor **aplica** as permissões (ACL) sobre quem pode escrever blobs e grants. A criptografia garante a **confidencialidade**: sem grant, não há VK.
-
-### 7.2 Convite
-
-1. Um admin cria o convite → link `https://<servidor>/invite/<token>` (token de uso único, expira em 7 dias).
-2. O convidado abre o link no app, cria conta ou faz login e aceita.
-3. O admin recebe a notificação "pendente de concessão" e o app mostra a **impressão digital** da chave do convidado (§7.4).
-4. O app do admin cria o grant (§5.4) e envia. O convidado passa a ver o cofre.
-
-O passo 3–4 exige um admin online. Isso é intencional: o servidor nunca pode conceder acesso sozinho.
-
-### 7.3 Histórico assinado de membros
-
-Cada mudança de membro (adicionar, mudar papel, remover) é um evento assinado pelo admin que a fez, encadeado por hash:
-
-```
-MembershipEvent { vault_id, seq, prev_hash, action, subject_user_id, role, actor_user_id, signature }
-```
-
-Os clientes validam a cadeia desde a criação do cofre. Um servidor que injete um membro falso é detectado, porque não consegue assinar o evento.
-
-Além disso, cada cliente guarda uma **âncora** do que já verificou: o tamanho da cadeia, o hash da cabeça e o criador. Uma cadeia nova só é aceita se **estender** a anterior. Assim, o servidor não consegue desfazer uma remoção servindo um prefixo, nem trocar o histórico por outro criado por uma conta dele.
-
-Regras de papel:
-- só o dono adiciona ou promove admins;
-- um evento `Add` não pode ter papel maior que o do convite aceito.
-
-### 7.4 Verificação de chave pública
-
-- Impressão digital = os primeiros 20 bytes de `SHA-256(UXK_pub || USK_pub)`, mostrados como 5 grupos de palavras ou números.
-- No convite, o admin pode confirmar a impressão por um canal externo (opcional, mas recomendado e destacado na UI).
-- Os clientes fixam a chave conhecida de cada colega (TOFU). Uma troca de chave gera alerta.
-
-### 7.5 Remoção e rotação
-
-Quando alguém é removido de um cofre, ou um dispositivo é revogado por suspeita de comprometimento:
-
-1. O servidor bloqueia imediatamente o acesso do removido (ACL).
-2. O app do admin gera `VK` nova (`key_version + 1`), cria grants para os membros restantes e recifra todos os registros do cofre em lote.
-3. Enquanto isso, o cofre fica marcado como `rotating`: as escritas novas já usam a versão nova, e as leituras aceitam as duas.
-4. Concluída a rotação, os grants antigos são apagados.
-
-Garantias que valem mesmo se o app fechar no meio:
-- **Remoções marcam o cofre:** toda remoção, inclusive alguém saindo por conta própria, marca o cofre com `rotation_due`. A marca só sai quando começa uma rotação nova, e a sincronização de qualquer gerente faz essa rotação.
-- **Rotação em andamento é substituída:** a chave de uma rotação em andamento foi entregue a quem era membro quando ela começou. Por isso, ela é concluída e logo substituída por outra.
-- **A versão da chave nunca recua:** o cliente nunca escreve com uma versão de chave menor que a mais nova que já verificou, mesmo que o servidor informe outra.
-
----
-
-## 8. Modelo de dados (cliente)
-
-Entidades sincronizadas, cada uma com um tipo e um schema versionado:
-
-| Entidade | Campos principais |
+| Uso | Algoritmo |
 |---|---|
-| `host` | label, address, port, protocol (`ssh`/`telnet`/`local`), group_id, identity_id, tags, jump_host_ids, opções de terminal |
-| `group` | label, parent_group_id, configurações herdadas |
-| `identity` | label, username, password?, ssh_key_id? |
-| `ssh_key` | label, private_key, public_key, passphrase?, certificates |
-| `known_host` | hostnames, key |
-| `snippet` | label, script, tags, package_id |
-| `port_forward` | host_id, tipo (L/R/D), endereços e portas |
-| `terminal_profile` | label, shell (`pwsh`/`powershell`/`cmd`/`wsl:<distro>`/`gitbash`/custom), args, cwd, env, tema |
-| `workspace` | layout salvo: abas, divisões de painel, perfis e hosts |
-| `settings` | preferências sincronizáveis (tema, fonte, atalhos) |
+| Registros e dados locais | XChaCha20-Poly1305, nonce aleatório de 24 bytes |
+| Entrega da chave do cofre a um membro | HPKE (RFC 9180): X25519, HKDF-SHA256, ChaCha20-Poly1305 |
+| Assinaturas (histórico de membros, concessões, dispositivos) | Ed25519 |
+| Login | OPAQUE (RFC 9807) com Argon2id |
+| Derivação de chaves | HKDF-SHA256 e Argon2id |
 
-**Perfis de terminal sincronizam; processos não.** Se um perfil apontar para `wsl:Ubuntu-24.04` e esse PC não tiver essa distro, o app mostra "indisponível neste dispositivo" em vez de falhar.
+Argon2id usa 64 MiB, 3 passadas e 1 fio. O app recusa parâmetros mais fracos que esses vindos do servidor, e nunca aceita menos que 19 MiB e 2 passadas em nenhum contexto.
 
-Identificadores: UUIDv7 gerado no cliente (ordenável, sem colisão, funciona offline). Referências entre entidades só por id, dentro do texto cifrado.
+### 3.2 Hierarquia de chaves
 
----
+```
+senha ── OPAQUE (Argon2id no cliente) ──► chave mestra ──┐
+chave de recuperação (32 bytes, mostrada uma vez) ───────┤ embrulham
+senha ── Argon2id com sal local ──► chave de desbloqueio ┘
+                                                         ▼
+                                              chave da conta (32 bytes)
+                                                         │ cifra
+                              ┌──────────────────────────┴───────────┐
+                   chave privada X25519                    chave privada Ed25519
+                (recebe chaves de cofre)              (assina histórico e concessões)
 
-## 9. Protocolo de sincronização
+chave do cofre (32 bytes, uma por cofre e por versão)
+   │ entregue a cada membro por HPKE, assinada por quem gerencia o cofre
+   ▼
+registros do cofre
+```
 
-### 9.1 Registro como o agente o vê
+- O cofre pessoal é um cofre com um único membro; não tem caminho especial.
+- Trocar a senha reembrulha a chave da conta. Nenhum dado é recifrado.
+- A chave de desbloqueio existe para o app abrir sem rede: a chave mestra depende do OPAQUE, que precisa do servidor.
+
+### 3.3 Envelope de registro
+
+```
+versão(1) ‖ algoritmo(1) ‖ nonce(24) ‖ texto cifrado ‖ tag(16)
+```
+
+Dados autenticados junto (não transmitidos; cada lado os recalcula):
+
+```
+formato 1: "vessel/v1/record" ‖ versão ‖ algoritmo ‖ id do cofre ‖ id do registro ‖ versão da chave
+formato 2: o mesmo ‖ versão do registro (u64) ‖ marca de exclusão (1 byte)
+```
+
+- O texto claro é JSON (`{"type": ..., "data": {...}}`), preenchido até um múltiplo de 256 bytes para esconder o tamanho exato. O tipo do item fica dentro do texto cifrado.
+- O cabeçalho é autenticado: trocar a versão ou o algoritmo faz a decifragem falhar.
+- O **formato 2** é o que todo app escreve. Ele amarra a versão do registro e a marca de exclusão, então o servidor não consegue devolver uma cópia antiga com um número novo nem inventar ou desfazer uma exclusão.
+- O **formato 1** só é usado para o nome do cofre (que não tem versão de registro) e ainda é lido em registros antigos. O app regrava esses registros no formato 2 e, quando um cofre não tem mais nenhum, passa a recusar o formato 1 nele.
+
+### 3.4 Concessão da chave do cofre
+
+Uma concessão leva a chave de um cofre, numa versão, a um membro. A chave é selada com HPKE para a chave X25519 do destinatário; o `info` do HPKE amarra cofre, versão da chave e destinatário; e o conjunto é assinado com a chave Ed25519 de quem concede. O app só abre concessões assinadas por quem o histórico verificado (§5.3) mostra como gerente do cofre, e nunca troca uma chave já instalada por outra diferente na mesma versão.
+
+## 4. Contas, dispositivos e sessões
+
+- **Cadastro.** O app roda o registro OPAQUE, gera a chave da conta, a chave de recuperação e os pares X25519 e Ed25519, e envia: o registro OPAQUE, a chave da conta embrulhada (pela chave mestra e pela de recuperação), as chaves públicas, as privadas cifradas e o cofre pessoal já com a concessão para si. A primeira conta de um servidor vira administradora e precisa do código de instalação mostrado no log do agente.
+- **Login.** OPAQUE em duas idas e voltas. A identidade do servidor (o host do endereço público) entra na transcrição, então a senha de um servidor não serve em outro. Para e-mails que não existem o agente responde com uma credencial falsa determinística, e a resposta fica igual à de uma conta real.
+- **Sessão.** O agente emite um token de acesso (15 minutos) e um de renovação (30 dias), guardados como SHA-256. A renovação exige uma assinatura da chave Ed25519 do dispositivo sobre `dispositivo ‖ hora ‖ token`, com tolerância de 5 minutos, e troca os dois tokens. Reapresentar um token de renovação já trocado encerra a sessão.
+- **Desbloqueio local.** O app abre bloqueado. A senha deriva a chave de desbloqueio e abre a chave da conta sem rede. A chave do dispositivo e o token de renovação ficam no SQLite local cifrados com a chave da conta.
+- **Recuperação.** A chave de recuperação abre a chave da conta. Para o servidor aceitar um novo registro OPAQUE sem a senha, o app apresenta um token derivado da chave de recuperação; o agente guarda só o SHA-256 dele. Toda recuperação emite uma chave de recuperação nova e encerra as sessões dos outros dispositivos.
+- **Troca de senha e exclusão de conta.** Exigem a senha atual (um login OPAQUE na mesma operação), não só uma sessão aberta.
+- **Dispositivos.** Dá para listar e revogar. Revogar encerra as sessões na hora; não recifra dados, porque o dispositivo já tinha as chaves. Para isso existe a rotação (§5.5).
+
+## 5. Cofres e times
+
+### 5.1 Papéis
+
+| Papel | Ler | Editar itens | Gerenciar membros | Trocar a chave | Excluir o cofre |
+|---|---|---|---|---|---|
+| leitor | ✓ | | | | |
+| editor | ✓ | ✓ | | | |
+| admin | ✓ | ✓ | ✓ (até editor) | ✓ | |
+| dono | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+O agente aplica as permissões sobre quem pode escrever. A criptografia garante o sigilo: sem concessão não há chave.
+
+### 5.2 Convite e aprovação
+
+1. Um gerente cria um convite: um link com um token de uso único, válido por 7 dias, opcionalmente restrito a um e-mail.
+2. O convidado aceita no app e entra na lista de pendentes do cofre.
+3. O gerente pede ao convidado, por outro canal, a **impressão digital** dele e a digita no app.
+4. O app confere a impressão com as chaves que vão receber a chave do cofre, assina o evento de entrada e envia a concessão.
+
+A impressão digital são 25 dígitos derivados de `SHA-256(chave X25519 ‖ chave Ed25519)`. O agente nunca concede acesso sozinho: sem um gerente aprovando não existe concessão.
+
+### 5.3 Histórico assinado de membros
+
+Cada mudança (criar o cofre, adicionar, mudar papel, remover ou sair) é um evento assinado por quem a fez e encadeado ao anterior por hash. O app revalida a cadeia inteira e nunca confia na lista de membros do servidor. O agente usa a mesma função para recusar eventos inválidos antes de guardá-los.
+
+Regras de papel verificadas na cadeia: só o dono adiciona ou promove admins, e uma entrada não pode ter papel maior que o do convite aceito.
+
+Cada app guarda uma **âncora** do que já verificou: o tamanho da cadeia, o hash da ponta e o criador. Uma cadeia nova só é aceita se estender a anterior, então o servidor não consegue desfazer uma remoção servindo só o começo, nem trocar o histórico por outro.
+
+### 5.4 Chaves de outras pessoas
+
+A primeira chave pública que o app vê de cada pessoa fica fixada (confiança no primeiro uso), junto com o e-mail. Uma chave diferente para a mesma pessoa, ou outra conta com um e-mail já fixado, interrompe a sincronização com um alerta. As chaves fixadas e as âncoras sincronizam pelo cofre pessoal, num registro cifrado, para que um dispositivo novo parta do que os outros já verificaram.
+
+### 5.5 Remoção e rotação
+
+Quando alguém sai ou é removido:
+
+1. O agente bloqueia o acesso na hora e marca o cofre como pendente de rotação.
+2. O app de um gerente gera uma chave nova (versão seguinte), cria concessões para os membros restantes e recifra todos os registros.
+3. Durante a rotação o cofre aceita leituras nas duas versões e escritas só na nova.
+4. Com tudo recifrado, as concessões antigas são apagadas.
+
+Isso vale mesmo se o app fechar no meio: a marca só sai quando uma rotação nova começa, e a sincronização de qualquer gerente a faz. Uma rotação que estava em andamento é concluída e logo substituída, porque a chave dela foi entregue a quem era membro quando começou. Rebaixar um gerente também força a rotação. O app nunca escreve com uma versão de chave menor que a mais nova que já verificou.
+
+## 6. Itens sincronizados
+
+`crates/vessel-model` define os tipos: `host`, `group`, `identity`, `ssh_key`, `known_host`, `snippet`, `port_forward`, `terminal_profile`, `workspace`, `settings` e `trust` (o registro de confiança do §5.4). Os ids são UUIDv7 gerados no cliente. As referências entre itens são ids dentro do texto cifrado. Campos que um app mais novo acrescentar são preservados pelos mais antigos.
+
+Um perfil de terminal que aponta para um shell que não existe naquele computador aparece como indisponível, em vez de falhar.
+
+## 7. Sincronização
+
+### 7.1 O registro como o agente o vê
 
 ```json
-{
-  "vault_id": "0193…",
-  "id": "0193…",
-  "version": 7,            // incrementado pelo servidor a cada escrita aceita
-  "seq": 18234,            // posição global no log do cofre (monotônica)
-  "key_version": 2,
-  "deleted": false,        // tombstone
-  "blob": "base64(envelope)",
-  "updated_at": "2026-11-12T13:01:22Z", // relógio do servidor, só informativo
-  "updated_by_device": "0193…"
-}
+{ "id": "…", "version": 7, "seq": 18234, "key_version": 2, "deleted": false,
+  "blob": "<envelope>", "updated_at": 1794700000, "updated_by_device": "…" }
 ```
 
-`entity_type` **não** é exposto: fica dentro do texto cifrado (e na AAD). O agente não sabe se o registro é host, chave ou snippet.
+`version` cresce a cada escrita aceita daquele registro; `seq` é a posição no log do cofre e define a ordem.
 
-### 9.2 Pull
-
-```
-GET /v1/vaults/{vault_id}/changes?since=<seq>&limit=500
-→ 200 { "changes": [Record…], "next_seq": 18234, "has_more": false }
-```
-
-O cliente guarda `next_seq` por cofre. Primeiro sync: `since=0`.
-
-### 9.3 Push
+### 7.2 Pull e push
 
 ```
-POST /v1/vaults/{vault_id}/changes
-{ "ops": [ { "id", "base_version", "key_version", "deleted", "blob" } … ] }   // até 500 ops
-→ 200 { "results": [ { "id", "status": "ok", "version", "seq" }
-                   | { "id", "status": "conflict", "current": Record } ] }
+GET  /v1/vaults/{id}/changes?since=<seq>     → { changes, next_seq, has_more }
+POST /v1/vaults/{id}/changes  { ops: [{ id, base_version, key_version, deleted, blob }] }   (até 500)
+     → { results: [ ok | conflict (com o registro atual) | rejected (com o motivo) ] }
 ```
 
-- `base_version` = a versão que o cliente tinha quando editou. `0` significa criação.
-- O servidor aceita só se `base_version == version atual` (controle otimista). Senão, devolve `conflict` com o registro atual.
-- Cada op é atômica individualmente; o lote não é transacional como um todo.
+O agente aceita uma escrita só se `base_version` for a versão atual e a versão da chave for a atual do cofre. Cada operação é atômica; o lote não.
 
-### 9.4 Resolução de conflito (no cliente)
+### 7.3 O que o app confere em tudo o que vem do servidor
 
-O cliente tem as três versões: **base** (cache local), **local** e **remota**. Ele faz merge de três vias **campo a campo**:
+- Um registro só substitui a cópia local depois de decifrado e autenticado com a chave do cofre.
+- Um registro sob uma versão de chave que o dispositivo não tem nunca substitui uma cópia local, e uma exclusão nessa situação é recusada. Se a causa for uma rotação em andamento, o app busca as concessões e tenta de novo; se continuar sem a chave, o pull para naquele ponto e recomeça na próxima sincronização.
+- Um envelope no formato 1 nunca substitui um registro que o dispositivo tem no formato 2.
+- A cópia local nunca volta para uma versão menor.
+- A resposta de um push tem que falar da operação enviada, com a versão para a qual o envelope foi selado. Caso contrário a edição continua na fila.
 
-- Campos alterados só de um lado → aplica.
-- Mesmo campo alterado nos dois lados → vence a edição local, que é a que vai ser enviada agora. Na prática, vence quem envia por último, sem depender do relógio de nenhum dispositivo. O valor perdedor vai para o "histórico de conflitos" visível na UI.
-- Exclusão vs. edição → a edição vence e o registro é restaurado. Excluir algo que outra pessoa acabou de editar costuma ser engano.
+### 7.4 Conflitos
 
-Depois do merge, faz um novo push com `base_version` = versão remota.
+Com as três versões em mãos (base, local e remota), o app mescla campo a campo: o que mudou só de um lado é aplicado; se o mesmo campo mudou dos dois, vence a edição local e a outra vai para a lista de conflitos; uma edição vence uma exclusão.
 
-### 9.5 Tempo real
+### 7.5 Tempo real e uso sem rede
 
-```
-GET /v1/events  (WebSocket, autenticado pelo access_token)
-servidor → { "type": "vault_changed", "vault_id", "seq" }
-servidor → { "type": "grant_added" | "grant_revoked" | "member_changed", "vault_id" }
-servidor → { "type": "device_revoked" }
-```
+`GET /v1/events` é um WebSocket autenticado que só avisa que algo mudou; os dados sempre chegam pelo pull. Sem ele, o app sincroniza a cada 60 segundos. Toda edição vai primeiro para o SQLite local e para uma fila cifrada, e sobe na próxima sincronização.
 
-O evento só avisa, e o cliente faz o pull. Isso mantém um único caminho de dados e torna o WebSocket opcional: sem ele, o cliente faz pull a cada 60 s e quando a janela ganha foco.
+## 8. Agente
 
-### 9.6 Offline
+Rust com `axum` e `tokio`, um binário, SQLite em modo WAL com uma conexão de escrita e quatro de leitura.
 
-- Toda edição vai primeiro para o SQLite local e para a fila `pending_ops`.
-- O app funciona totalmente offline com os dados já sincronizados.
-- Ao reconectar: push da fila, depois pull.
+### 8.1 API
 
----
-
-## 10. Agente (servidor)
-
-### 10.1 Stack
-
-- Rust, `axum` (HTTP + WebSocket), `sqlx`, `tokio`.
-- Banco: **SQLite** em modo WAL na v0.1 (ver §0). Postgres é a evolução prevista para servidores com muitos times.
-- Binário único, imagem `distroless`/`scratch` de aproximadamente 20 MB.
-
-### 10.2 API (v1)
-
-| Método | Rota | Descrição |
-|---|---|---|
-| POST | `/v1/auth/register/start` · `/finish` | Cadastro OPAQUE |
-| POST | `/v1/auth/login/start` · `/finish` | Login OPAQUE → tokens |
-| POST | `/v1/auth/refresh` | Novo access token (assinado pela device key) |
-| POST | `/v1/auth/logout` | Revoga a sessão atual |
-| GET/PUT | `/v1/account/keys` | AK embrulhado, chaves públicas e privadas cifradas |
-| GET/DELETE | `/v1/devices[/{id}]` | Lista/revoga dispositivos |
-| GET/POST | `/v1/orgs` | Organizações |
-| GET/POST | `/v1/orgs/{id}/invites` | Convites |
-| POST | `/v1/invites/{token}/accept` | Aceitar convite |
-| GET/POST | `/v1/vaults` | Listar/criar cofres |
-| GET/POST | `/v1/vaults/{id}/members` | Membros + eventos assinados |
-| GET/POST | `/v1/vaults/{id}/grants` | Grants de chave |
-| POST | `/v1/vaults/{id}/rotate` | Inicia/conclui rotação |
-| GET/POST | `/v1/vaults/{id}/changes` | Pull/push (§9) |
-| GET | `/v1/users/{id}/public-keys` | Chaves públicas para concessão |
-| GET | `/v1/events` | WebSocket |
-| GET | `/v1/server/info` | Versão, limites e capacidades (o app consulta ao adicionar a URL) |
-
-### 10.3 Schema (resumo)
-
-```sql
-users(id, email, opaque_record, wrapped_ak_mk, wrapped_ak_rk,
-      uxk_pub, usk_pub, enc_uxk_priv, enc_usk_priv, kdf_params, created_at)
-devices(id, user_id, name, device_pub, last_seen_at, revoked_at)
-sessions(id, device_id, refresh_hash, expires_at)
-orgs(id, name, owner_id)
-org_members(org_id, user_id, role)
-vaults(id, org_id NULL, current_key_version, state)          -- state: active|rotating
-vault_members(vault_id, user_id, role)
-membership_events(vault_id, seq, prev_hash, payload, signature)
-grants(vault_id, key_version, recipient_id, payload)         -- payload = Grant assinado
-records(vault_id, id, version, seq, key_version, deleted, blob, updated_at, updated_by_device,
-        PRIMARY KEY (vault_id, id))
-vault_seq(vault_id, last_seq)                                 -- contador por cofre
-invites(token_hash, org_id, vault_id NULL, role, expires_at, accepted_by NULL)
-audit_log(id, actor_id, action, target, at)                   -- sem conteúdo
-```
-
-O `seq` é atribuído dentro da transação de escrita (`UPDATE vault_seq … RETURNING`), o que garante ordem total por cofre.
-
-### 10.4 Deploy
-
-```yaml
-# docker-compose.yml (exemplo)
-services:
-  agent:
-    image: ghcr.io/<org>/vessel-agent:0.1
-    environment:
-      VESSEL_DATABASE_URL: postgres://vessel:***@db/vessel
-      VESSEL_PUBLIC_URL: https://vessel.exemplo.com
-      VESSEL_SIGNUPS: invite-only        # open | invite-only | disabled
-    depends_on: [db]
-  db:
-    image: postgres:17
-    volumes: [pgdata:/var/lib/postgresql/data]
-  caddy:                                  # TLS automático
-    image: caddy:2
-    ports: ["443:443"]
-volumes: { pgdata: {} }
-```
-
-- TLS fica no reverse proxy (Caddy ou Traefik). O agente também aceita certificado próprio.
-- Backup = dump do banco. **Ele não pode ir para storage não confiável:** os registros estão cifrados, mas o banco também guarda o segredo OPAQUE do servidor (`server_meta.opaque_setup`) ao lado dos arquivos de senha. Com os dois, quem tiver o backup testa senhas offline contra todas as contas. Além disso, há metadados em claro: e-mails, nomes de dispositivos, membros e papéis dos cofres, datas e tamanhos. Cifre o backup com uma chave guardada fora dele.
-- Rate limit no login e no cadastro. O primeiro usuário cadastrado vira administrador do servidor.
-
----
-
-## 11. App desktop
-
-### 11.1 Stack
-
-- **Tauri 2** (WebView2 no Windows) com backend em Rust.
-- **UI:** SolidJS + TypeScript + Tailwind, componentes próprios. Tema claro/escuro e densidade compacta.
-- **Terminal:** xterm.js com addons `webgl`, `fit`, `search`, `unicode11` e `web-links`.
-- **Armazenamento local:** SQLite (`rusqlite`), com os registros guardados **ainda cifrados** (o mesmo envelope do servidor) e decifrados só em memória após o desbloqueio.
-
-### 11.2 Terminais locais
-
-- **PTY:** `portable-pty` (ConPTY no Windows 10 1809+).
-- **Descoberta automática de shells:**
-  - `pwsh.exe` (PowerShell 7) e `powershell.exe` (5.1), `cmd.exe`;
-  - distros WSL via `wsl.exe --list --quiet` (ou registro `HKCU\…\Lxss`), abertas com `wsl.exe -d <distro>`;
-  - Git Bash, se encontrado.
-- O stream do PTY vai do Rust para a UI por um canal Tauri em binário (sem JSON por byte), com *batching* de ~4 ms para manter a fluidez em saídas grandes.
-- Integração de shell (OSC 133 / OSC 7) para saber o diretório atual e marcar prompts, numa fase posterior.
-
-### 11.3 SSH
-
-- Crate `russh` (cliente SSH puro Rust), com:
-  - autenticação por chave, senha e agente (Pageant/OpenSSH agent no Windows);
-  - jump hosts e port-forwarding local, remoto e dinâmico (SOCKS);
-  - verificação de `known_host`, sincronizado como entidade.
-- As chaves privadas nunca vão para disco em claro: ficam no SQLite cifrado e são decifradas em memória só no momento da conexão.
-
-### 11.4 Interface
-
-```
-┌─────────────┬──────────────────────────────────────────────────────┐
-│ Hosts       │  [PowerShell] [Ubuntu (WSL)] [prod-db ⚡] [+]          │
-│ Terminais   ├──────────────────────────────────────────────────────┤
-│ Chaves      │                                                      │
-│ Snippets    │                 terminal / divisões                   │
-│ Port fwd    │                                                      │
-│ Cofres      │                                                      │
-│ ─────────── │                                                      │
-│ ⚙ Config    │                                                      │
-│ ● sync ok   ├──────────────────────────────────────────────────────┤
-└─────────────┴──────────────────────────── barra de status ────────┘
-```
-
-- Paleta de comandos (`Ctrl+K`) para abrir host, perfil ou snippet.
-- Painéis divididos e workspaces salvos.
-- Indicador de sync com estado offline, sincronizando e conflito.
-
----
-
-## 12. Roadmap
-
-| Fase | Entrega | Critério de pronto |
-|---|---|---|
-| **0 — Fundação** | Workspace Cargo; `vessel-crypto` com envelopes, HPKE grant, OPAQUE; testes e vetores de teste | Round-trip cifra/decifra, grant entre dois usuários, OPAQUE cliente↔servidor em teste |
-| **1 — Terminal local** | App Tauri com abas, PowerShell/CMD/WSL, perfis locais, tema | Abrir 10 abas, `cat` de 50 MB sem travar a UI |
-| **2 — Agente pessoal** | Cadastro/login, cofre pessoal, pull/push, WebSocket, Docker | Mesmo host criado no PC A aparece no PC B em < 2 s |
-| **3 — SSH** | Hosts, identidades, chaves, known hosts, jump host, port-forward | Conectar via jump host com chave sincronizada |
-| **4 — Times** | Orgs, convites, papéis, grants, histórico assinado, rotação | Remover um membro e verificar que ele não lê registros novos |
-| **5 — Polimento** | Snippets, workspaces, paleta, Windows Hello, auto-update, import de `~/.ssh/config` | — |
-
----
-
-## 13. Questões em aberto
-
-1. **Nome do projeto** e da organização no registry de imagens.
-2. **Ofuscar o número de registros por cofre?** Hoje o servidor sabe quantos registros cada cofre tem e o tamanho aproximado de cada um. Dá para mitigar com registros-isca, ao custo de complexidade.
-3. **SSO / OIDC para times:** é incompatível com zero-knowledge puro sem uma etapa extra de desbloqueio. Deixar para depois da v1?
-4. **Suporte a macOS/Linux** no app: o desenho permite (Tauri + `portable-pty`), mas a v1 testa só Windows?
-5. **Limite de tamanho de registro** (sugestão: 256 KiB) e de cofre.
-
----
-
-## 14. Integração com agentes de IA (MCP)
-
-O app desktop embute um servidor **MCP** (Model Context Protocol) para que agentes como Claude Code, Claude Desktop ou Cursor operem o Vessel. O servidor fica no desktop, e não no agente de sync, porque só ali os dados estão decifrados.
-
-### 14.1 Transporte e acesso
-
-- **Streamable HTTP** com respostas JSON em `http://127.0.0.1:<porta>/mcp` (padrão 47011). Escuta só em loopback.
-- **Token Bearer** obrigatório (`vsl_…`, 256 bits aleatórios), gerado no app e regenerável.
-- **Proteção contra DNS rebinding:** requisições com `Origin` que não seja localhost são recusadas.
-- Só funciona com o app **desbloqueado**. Bloqueado, toda ferramenta responde "Vessel is locked".
-- Para clientes que só falam stdio existe a ponte `vessel-mcp` (`apps/mcp-bridge`), configurada com `VESSEL_MCP_URL` e `VESSEL_MCP_TOKEN`.
-- Toda chamada aparece no app (Agentes de IA → Atividade), e as sessões abertas por agentes recebem o selo "IA" na aba.
-- Duas chaves no app: **permitir edições** e **permitir digitar nos terminais**.
-- Com "digitar" desligado, o agente ainda abre e lê terminais, mas nada que execute comandos sozinho: só shells embutidos sem argumentos nem variáveis de ambiente (sem `custom`, sem perfis com `args`/`env`), e nenhum host com "Snippet ao conectar".
-
-### 14.2 O que os agentes podem fazer
-
-| Área | Ferramentas |
+| Rota | Para quê |
 |---|---|
-| Estado | `vessel_status`, `list_vaults`, `list_vault_members`, `list_conflicts`, `sync_now` |
-| Itens | `list_items`, `get_item`, `create_item`, `update_item`, `delete_item`, `move_item` |
-| Terminais locais | `list_shells`, `open_terminal` (perfil, PowerShell, CMD, WSL, Git Bash) |
-| SSH | `connect_ssh` (com as credenciais salvas, sem vê-las) |
-| Uso do terminal | `terminal_run` (envia e espera a saída estabilizar), `terminal_write`, `terminal_read`, `terminal_close`, `run_snippet`, `list_terminals` |
-| Redirecionamentos | `list_port_forwards`, `start_port_forward`, `stop_port_forward` |
+| `GET /v1/server/info` | Versão, identidade OPAQUE e modo de cadastro |
+| `POST /v1/auth/register/{start,finish}` | Cadastro |
+| `POST /v1/auth/login/{start,finish}` | Login |
+| `POST /v1/auth/refresh` · `/logout` | Renovar e encerrar a sessão |
+| `POST /v1/auth/recovery/{start,finish}` | Recuperação com a chave de recuperação |
+| `POST /v1/account/password/{start,finish}` · `/delete/{start,finish}` | Trocar a senha; excluir a conta |
+| `GET /v1/account` · `GET /v1/devices` · `DELETE /v1/devices/{id}` | Conta e dispositivos |
+| `GET, POST /v1/vaults` · `GET, DELETE /v1/vaults/{id}` · `PUT …/meta` | Cofres |
+| `GET, POST /v1/vaults/{id}/membership` | Histórico de membros e pendentes |
+| `GET /v1/vaults/{id}/grants` | Concessões de quem chama |
+| `POST /v1/vaults/{id}/rotate/{start,finish}` | Rotação de chave |
+| `POST /v1/vaults/{id}/invites` · `POST /v1/invites/{token}/accept` | Convites |
+| `GET, POST /v1/vaults/{id}/changes` | Pull e push |
+| `GET /v1/events` | WebSocket |
+| `POST /v1/admin/invites` · `GET /v1/admin/users` · `PATCH, DELETE /v1/admin/users/{id}` · `GET /v1/admin/stats` | Administração do servidor |
 
-### 14.3 O que os agentes **não** podem fazer
+Não existe diretório de usuários: as chaves dos colegas chegam com os cofres compartilhados, então ninguém consegue enumerar as contas de um servidor. Quem não é membro de um cofre recebe 404, não 403.
 
-- **Ler credenciais:** `password`, `private_key` e `passphrase` são removidos de toda saída e trocados por `has_password`, `has_private_key` e `has_passphrase`. Conflitos de sincronização nesses campos mostram só o nome do campo.
-- **Gravar credenciais:** qualquer `create_item` ou `update_item` que contenha esses campos é recusado. Em edições, os segredos existentes são preservados.
-- **Alterar identidades, chaves SSH e hosts conhecidos:** são só leitura para agentes. Os dois primeiros são credenciais, e o terceiro decide em quais servidores confiar. Agentes podem referenciá-los por id ao criar hosts.
-- **Gestão de conta e de time:** senha, chave de recuperação, dispositivos, convites, aprovação de membros e rotação de chave ficam de fora.
-- **Aceitar chaves de host:** agentes nunca aceitam uma chave nova nem alterada. Só conectam a servidores cuja chave o usuário já confirmou no app. Sem isso, um agente poderia apontar um host que tem senha salva para um servidor dele e receber a senha.
+### 8.2 Limites
 
-Limitação conhecida: um agente com permissão de digitar no terminal pode rodar comandos que leiam arquivos de credenciais *no servidor remoto* (ex.: `cat ~/.ssh/id_rsa`). A proteção do Vessel cobre os segredos guardados no cofre, não o que o terminal remoto expõe. Desligue "permitir digitar nos terminais" quando isso importar.
+- Autenticação: 30 tentativas por minuto por endereço (ou /64 de IPv6) e 20 por conta.
+- Escrita: 240 envios por minuto por conta; lotes de até 500 registros de até 256 KiB.
+- Cota de espaço e de cofres por conta, configuráveis.
+- 50 dispositivos por conta, 16 sockets por usuário, 100 convites abertos e 10.000 eventos de membros por cofre.
+- Toda requisição tem prazo de 60 segundos; sessões e convites vencidos são apagados de hora em hora.
 
----
+### 8.3 Implantação
 
-## 15. Modo local (sem servidor) e migrações
+O TLS fica num proxy reverso (o `deploy/` traz o Caddy configurado). O agente escuta em HTTP e não deve ser exposto diretamente. O backup sai sempre cifrado (`vessel-agent backup`), porque o banco guarda o segredo OPAQUE do servidor ao lado dos arquivos de senha: com os dois, quem tivesse um backup em claro poderia testar senhas offline. Detalhes em `docs/OPERATING.md`.
 
-O app pode ser usado sem agente. Na primeira execução a pessoa escolhe entre "Só neste computador" e "Sincronizar com um servidor".
+## 9. App
 
-### 15.1 Como o modo local funciona
+### 9.1 Base
 
-- A conta local usa a **mesma hierarquia de chaves** do modo servidor: chave da conta (AK), chaves X25519/Ed25519 e um cofre pessoal com chave própria. Os registros são cifrados no disco exatamente como seriam no servidor.
-- A senha desbloqueia o AK por Argon2id, do mesmo jeito que o desbloqueio offline (§6.3). Não há OPAQUE, porque não há servidor.
-- A **chave de recuperação** embrulha o AK. Em modo local ela redefine a senha direto no dispositivo (`recover_local`).
-- O perfil guarda `local: true`. Sync vira no-op, e tudo o que precisa de servidor (cofres compartilhados, dispositivos, convites) responde `LocalMode`.
+Tauri 2 (WebView2 no Windows) com backend em Rust; interface em SolidJS e TypeScript; terminal com xterm.js. O armazenamento local é SQLite, com os registros guardados ainda cifrados, exatamente como no servidor, e decifrados só em memória depois do desbloqueio. A política de conteúdo da janela só permite recursos do próprio app.
 
-### 15.2 Migrações
+### 9.2 Terminais locais
+
+`portable-pty` (ConPTY no Windows). O app detecta PowerShell 7, Windows PowerShell, Prompt de Comando, distribuições WSL e Git Bash. A saída vai do Rust para a interface por um canal binário e fica num buffer circular de 512 KiB por sessão.
+
+Um perfil guardado num cofre compartilhado que rode um programa próprio, argumentos ou variáveis de ambiente pede confirmação antes de abrir, mostrando o comando completo.
+
+### 9.3 SSH
+
+`russh`, com autenticação por chave (com ou sem passphrase) e por senha, jump hosts encadeados e redirecionamentos local, remoto e SOCKS.
+
+- **Chave do servidor.** Na primeira conexão o app mostra a impressão digital e só segue com a confirmação da pessoa. A chave confirmada vira um `known_host` no cofre pessoal. Uma chave diferente da confirmada é sempre recusada, com alerta.
+- **De onde vêm as referências.** Uma referência feita por um item (credencial, jump host, snippet de conexão) é resolvida no cofre do próprio item ou no cofre pessoal. As confirmações de chave de servidor vêm só do cofre pessoal. Assim, outro membro de um cofre compartilhado não consegue redirecionar as referências de alguém para registros que ele controla.
+- **Credencial de outro cofre.** Quando um host de um cofre usa uma credencial guardada em outro, a primeira conexão avisa qual credencial será enviada.
+- **Redirecionamentos.** Uma regra que escuta fora de `127.0.0.1` fica aberta para a rede; o app avisa antes, e só a pessoa pode iniciá-la.
+
+As chaves privadas nunca vão para o disco em claro: são decifradas em memória no momento da conexão.
+
+## 10. Assistentes de IA (MCP)
+
+O app embute um servidor MCP para que assistentes operem o Vessel. Ele fica no app, e não no agente, porque só ali os dados estão decifrados.
+
+- Escuta só em `127.0.0.1` (porta padrão 47011), exige um token de 256 bits comparado em tempo constante e recusa requisições com `Origin` que não seja local.
+- Só funciona com o app desbloqueado. Bloqueado, informa apenas isso.
+- Cada chamada aparece no app, e as sessões abertas por um assistente são marcadas.
+- Duas permissões, **desligadas por padrão**: editar itens, e digitar ou executar comandos nos terminais.
+
+O que um assistente nunca pode fazer:
+
+- **Ler credenciais.** Senhas, chaves privadas e passphrases saem de toda resposta, em qualquer profundidade, trocadas por `has_password` e semelhantes.
+- **Gravar credenciais.** Qualquer criação ou edição com esses campos é recusada, e uma edição preserva os segredos que o item já tinha.
+- **Alterar identidades, chaves SSH e hosts conhecidos.** São só leitura.
+- **Aceitar a chave de um servidor.** Só conecta a servidores que a pessoa já confirmou no app. Sem isso, um assistente poderia apontar um host com senha salva para um servidor dele.
+- **Abrir uma porta para a rede**, mexer em conta, dispositivos, convites, membros ou rotação de chave, ou mudar o tempo de bloqueio automático.
+
+Sem a permissão de digitar, o assistente ainda abre e lê terminais, mas nada que execute comandos por conta própria: só shells embutidos sem argumentos, nenhum host com snippet de conexão. Também não pode **salvar** algo que a pessoa executaria depois sem reler: snippets, perfis com programa, argumentos ou ambiente próprios, e snippet de conexão num host.
+
+Limitação: com a permissão de digitar, um assistente pode rodar comandos que leiam credenciais no servidor remoto (por exemplo `cat ~/.ssh/id_rsa`). A proteção cobre o que está no cofre, não o que o terminal remoto mostra.
+
+## 11. Modo local e migrações
+
+Sem agente, a conta usa a mesma hierarquia de chaves e os registros são cifrados no disco do mesmo jeito. A senha abre a chave da conta por Argon2id e a chave de recuperação redefine a senha no próprio dispositivo. Tudo o que depende de servidor responde que não está disponível.
 
 | Caminho | O que acontece | Senha e chave de recuperação |
 |---|---|---|
-| Local → conta nova | A conta é registrada no servidor **com as mesmas chaves**; os itens vão para o cofre pessoal | A senha escolhida vira a da conta. É emitida uma **nova** chave de recuperação, porque o servidor precisa de uma prova derivada dela (§0) e o app não guarda a antiga |
-| Local → conta existente | Login normal; os itens locais são **somados** ao cofre pessoal da conta | Passam a valer as da conta |
-| Servidor → local | O dispositivo fica com uma cópia de tudo o que enxerga, incluindo cofres compartilhados, num cofre pessoal local | Continuam as mesmas |
+| Local → conta nova | A conta é registrada com as mesmas chaves; os itens vão para o cofre pessoal | A senha escolhida vira a da conta, e é emitida uma chave de recuperação nova |
+| Local → conta existente | Login normal; os itens locais são somados ao cofre pessoal | Passam a valer as da conta |
+| Servidor → local | O dispositivo fica com uma cópia de tudo o que enxerga, num cofre pessoal local | Continuam as mesmas |
 
-Garantias contra perda de dados:
+Para não perder dados: o app grava um backup cifrado do banco antes de migrar; os itens passam por uma fila de importação cifrada que continua de onde parou se o app fechar; itens idênticos a um já existente não são duplicados, e as referências a eles passam a apontar para a cópia que ficou. A conta no servidor nunca é apagada por "parar de sincronizar".
 
-1. **Backup antes de tudo.** O app grava uma cópia cifrada do banco em `backups/` (`VACUUM INTO`) antes de qualquer migração.
-2. **Fila de importação cifrada.** Os itens são decifrados em memória e gravados numa fila (`import_queue`, selada com o AK) no banco novo antes de qualquer sync. Se o app fechar no meio, a importação continua no próximo desbloqueio ou sync.
-3. **Sem duplicatas.** Um item com conteúdo idêntico a um já existente não é copiado, e as referências a ele (ex.: o perfil de uma aba de workspace) passam a apontar para a cópia que ficou. Os ids são preservados, então referências entre itens migrados continuam válidas.
-4. A conta no servidor nunca é apagada por "parar de sincronizar".
+## 12. Limitações conhecidas
 
-Os testes estão em `crates/vessel-client/tests/local_mode.rs`.
+- A confiança nas chaves de outras pessoas começa no primeiro contato; a conferência da impressão digital na aprovação é o que fecha essa janela.
+- O servidor vê quantos registros cada cofre tem e o tamanho deles arredondado para 256 bytes.
+- Registros antigos no formato 1 não protegem a versão nem a marca de exclusão até serem regravados, o que acontece sozinho na primeira sincronização de quem pode escrever no cofre.
+- O instalador do Windows ainda não é assinado. macOS e Linux não têm instalador.
+- Não há verificação de e-mail no cadastro. Num servidor com cadastro aberto, a tela de cadastro revela se um e-mail já tem conta.

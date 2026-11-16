@@ -5,9 +5,9 @@ Este roteiro cobre o que só dá para testar com o app aberto. O resto já tem t
 | Área | Como é testado |
 |---|---|
 | Criptografia, protocolo e merge | `cargo test --workspace` |
-| Agente ↔ clientes: 3 PCs, conflitos, times, recuperação, troca de senha, WebSocket, convites | `cargo test -p vessel-client --test e2e` |
+| Agente ↔ clientes: 3 PCs, conflitos, times, recuperação, troca de senha, WebSocket, convites, servidor hostil | `cargo test -p vessel-client` |
 | SSH real: chave de host desconhecida/alterada, senha, chave com e sem passphrase, jump host, forwards `-L`/`-R`/`-D`, UTF-8 | `cargo test -p vessel-desktop --lib -- --ignored lab_` (precisa do laboratório) |
-| Servidor MCP: redação de segredos, recusa de escrita de credenciais | `cargo test -p vessel-desktop --lib mcp` |
+| Servidor MCP: redação de segredos, recusa de credenciais, edições que executariam comandos | `cargo test -p vessel-desktop --lib mcp` |
 
 ## 0. Subir o laboratório
 
@@ -136,27 +136,22 @@ powershell -File deploy\dev\lab.ps1 bot fingerprint
 
 ## 7. Agentes de IA (MCP)
 
-**Já testado diretamente pelo protocolo, em 13/11/2026:**
-- token inválido ou ausente → 401, e origem externa → 403;
-- leitura de status, cofres, itens e shells;
-- criação, edição, sync e exclusão de grupo, host, snippet e forward;
-- recusa de credenciais: senha, chave privada, passphrase (também em campos aninhados, desde a correção), e de criar identidade, chave ou host conhecido;
-- terminais PowerShell, CMD e WSL, `terminal_run`, Ctrl+C e `run_snippet`;
-- `connect_ssh` pedindo a impressão digital antes de confiar, e falhando sem credencial, porque o agente não consegue fornecer uma.
+A redação de segredos, a recusa de credenciais e as regras de permissão têm teste automático (`cargo test -p vessel-desktop --lib mcp`). Com o app aberto, confira o fluxo inteiro:
 
-O que falta conferir com a interface aberta:
-
-1. **Agentes de IA → Ativar.** Copie o comando do Claude Code e rode-o.
-   - Para eu mesmo executar este roteiro, me autorize a ler o token em `%APPDATA%\dev.vessel.desktop\settings.json`.
-2. Peça ao agente:
-   - "liste meus hosts";
-   - "crie um snippet que mostra o uso de disco";
-   - "abra um terminal no Bastion e rode `uptime`".
-   - *Esperado:* tudo funciona e cada ação aparece no log de atividade.
-3. Peça "qual a senha do host Bastion?" e "troque a senha do Bastion para X".
+1. **Agentes de IA → Ativar.** As duas permissões começam desligadas. Copie o comando do seu assistente e rode-o.
+2. Peça ao assistente "liste meus hosts" e "abra um terminal PowerShell".
+   - *Esperado:* funciona, e cada ação aparece no log de atividade.
+3. Peça "crie um snippet que mostra o uso de disco" e "rode `uptime` no terminal".
+   - *Esperado:* as duas são recusadas, cada uma citando a permissão que falta.
+4. Ligue **Permitir criar, editar e excluir** e deixe **Permitir digitar** desligada. Peça um host novo e depois um snippet novo.
+   - *Esperado:* o host é criado; o snippet é recusado, porque você o executaria depois.
+5. Ligue **Permitir digitar** e peça "abra um terminal no Bastion e rode `uptime`".
+   - *Esperado:* funciona. Num host cuja chave você ainda não confirmou no app, o assistente é recusado e pede que você conecte uma vez.
+6. Peça "qual a senha do host Bastion?" e "troque a senha do Bastion para X".
    - *Esperado:* ele vê só `has_password: true`, e a escrita é recusada.
-4. Desligue "Permitir digitar nos terminais" e "Permitir alterações". *Esperado:* as ferramentas correspondentes recusam.
-5. Bloqueie o app. *Esperado:* as chamadas respondem "Vessel está bloqueado".
+7. Bloqueie o app. *Esperado:* as chamadas respondem que o Vessel está bloqueado.
+8. Com `curl`, chame `http://127.0.0.1:47011/mcp` sem token e depois com `-H "Origin: http://exemplo.com"`.
+   - *Esperado:* 401 e 403.
 
 ## 8. Instalador
 

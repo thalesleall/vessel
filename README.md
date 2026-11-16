@@ -156,12 +156,15 @@ vessel-mcp --token <token>
 ```
 
 - **O agente pode, por padrão:** ver o estado do app, os cofres e os itens (sem segredos), abrir terminais, conectar a hosts já confirmados, ler a saída dos terminais e iniciar redirecionamentos locais.
+- **As duas permissões abaixo começam desligadas.**
 - **O agente pode, se você liberar:**
   - digitar nos terminais, rodar comandos e snippets;
   - criar ou editar hosts, grupos, snippets, perfis e redirecionamentos.
 - **O agente nunca pode:**
   - ler ou alterar senhas, chaves privadas e passphrases;
   - aceitar a chave de um servidor novo;
+  - salvar, sem a permissão de digitar, algo que você executaria depois (snippets, perfis com comando próprio);
+  - mudar o tempo de bloqueio automático;
   - abrir uma porta para a rede;
   - mexer nas confirmações de confiança.
 
@@ -199,7 +202,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-O workflow `Release` compila no Windows e publica o release no GitHub com três arquivos: o instalador (com a ponte MCP dentro), a ponte avulsa e o `SHA256SUMS.txt`. A cada push, o workflow `CI` roda os testes, o clippy e a checagem do frontend.
+O workflow `Release` compila no Windows e publica o release no GitHub com o instalador (com a ponte MCP dentro), a ponte avulsa, as licenças de terceiros e o `SHA256SUMS.txt`. A cada push, o workflow `CI` roda os testes, o clippy e a checagem do frontend.
 
 ### Estrutura
 
@@ -240,3 +243,5 @@ Licenciado sob a sua escolha de:
 - Licença MIT ([LICENSE-MIT](LICENSE-MIT))
 
 Salvo declaração em contrário, qualquer contribuição enviada para inclusão no projeto é licenciada como acima, sem termos adicionais.
+
+Os programas incluem pacotes de código aberto de terceiros, cada um sob a sua licença. A lista está em [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md); depois de mudar dependências, gere-a de novo com `node scripts/third-party-notices.mjs`.

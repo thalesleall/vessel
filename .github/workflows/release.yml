@@ -54,6 +54,8 @@ jobs:
           $installer = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           Copy-Item $installer.FullName "out/Vessel_${version}_x64-setup.exe"
           Copy-Item target/release/vessel-mcp.exe "out/vessel-mcp_${version}_x64.exe"
+          # Licenças dos pacotes de terceiros incluídos nos binários.
+          Copy-Item THIRD-PARTY-NOTICES.md out/THIRD-PARTY-NOTICES.md
           # LF line endings, so `sha256sum -c SHA256SUMS.txt` works as is.
           $sums = Get-ChildItem out/* | ForEach-Object {
             "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
