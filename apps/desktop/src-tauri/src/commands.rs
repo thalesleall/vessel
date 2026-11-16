@@ -460,12 +460,19 @@ pub async fn accept_invite(state: S<'_>, token: String) -> CmdResult<Option<Uuid
 }
 
 #[tauri::command]
-pub async fn approve_member(state: S<'_>, vault_id: Uuid, user_id: Uuid) -> CmdResult<()> {
+pub async fn approve_member(
+    state: S<'_>,
+    vault_id: Uuid,
+    user_id: Uuid,
+    fingerprint: String,
+) -> CmdResult<()> {
+    // The fingerprint the user typed is checked again here, against the keys that actually
+    // receive the vault key.
     state
         .vessel
         .lock()
         .await
-        .approve_member(vault_id, user_id)
+        .approve_member_verified(vault_id, user_id, &fingerprint)
         .await?;
     state.changed();
     Ok(())

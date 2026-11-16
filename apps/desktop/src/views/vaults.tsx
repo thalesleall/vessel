@@ -82,7 +82,7 @@ function VaultDetail(props: { vault: VaultView; onClosed: () => void }) {
       confirm: "Aprovar",
       danger: false,
     }))) return;
-    await attempt(() => api.approveMember(props.vault.id, userId), `${email} agora tem acesso`);
+    await attempt(() => api.approveMember(props.vault.id, userId, fp), `${email} agora tem acesso`);
     refetch();
   };
   const remove = async (userId: string, email: string) => {
@@ -238,6 +238,3 @@ function AcceptInvite(props: { onClose: () => void }) {
   );
 }
 
-export function EmptyVaults() {
-  return <Empty icon="vault" title="Nenhum cofre" />;
-}

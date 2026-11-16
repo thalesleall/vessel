@@ -555,8 +555,25 @@ impl Vessel {
     }
 
     /// Approves a pending member: signs an `Add` event and grants them the vault key.
-    /// Compare `fingerprint` with the person out of band before approving.
+    /// Prefer [`Self::approve_member_verified`], which ties the approval to the fingerprint the
+    /// person read out.
     pub async fn approve_member(&mut self, vault_id: Uuid, user_id: Uuid) -> Result<()> {
+        self.approve(vault_id, user_id, None).await
+    }
+
+    /// Approves a pending member only if their keys still have `fingerprint`, the one the
+    /// person read out over another channel. The vault key is sealed to exactly the keys that
+    /// were verified, whatever the server lists as pending by the time of the approval.
+    pub async fn approve_member_verified(
+        &mut self,
+        vault_id: Uuid,
+        user_id: Uuid,
+        fingerprint: &str,
+    ) -> Result<()> {
+        self.approve(vault_id, user_id, Some(fingerprint)).await
+    }
+
+    async fn approve(&mut self, vault_id: Uuid, user_id: Uuid, fingerprint: Option<&str>) -> Result<()> {
         let (_, response) = self.verify_membership(vault_id).await?;
         let pending = response
             .pending
@@ -564,6 +581,15 @@ impl Vessel {
             .find(|p| p.user.user_id == user_id)
             .ok_or_else(|| ClientError::invalid("this user has no pending invite"))?
             .clone();
+        if let Some(expected) = fingerprint {
+            let digits = |s: &str| s.chars().filter(char::is_ascii_digit).collect::<String>();
+            let actual = pending.user.public_keys.fingerprint().to_string();
+            if digits(expected).is_empty() || digits(expected) != digits(&actual) {
+                return Err(ClientError::invalid(
+                    "the fingerprint does not match the keys of the person waiting for approval",
+                ));
+            }
+        }
         let kv = self.write_key_version(&vault_id)?;
         let me = self.user_id()?;
         let grant = Grant::issue(
@@ -614,7 +640,7 @@ impl Vessel {
     }
 
     /// Generates a new vault key, grants it to every current member and re-encrypts every
-    /// record with it (`docs/ARCHITECTURE.md` §7.5). A rotation already in progress is finished
+    /// record with it (`docs/ARCHITECTURE.md` §5.5). A rotation already in progress is finished
     /// first and then superseded: its key was handed to whoever was a member when it started,
     /// possibly including someone removed since.
     pub async fn rotate_vault(&mut self, vault_id: Uuid) -> Result<()> {

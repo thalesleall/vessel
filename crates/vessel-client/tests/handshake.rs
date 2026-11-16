@@ -1,4 +1,4 @@
-//! Regression tests for the app <-> agent handshake audit (docs/NIGHT-LOG.md, round 3).
+//! Regression tests for the app <-> agent handshake against a hosted (possibly hostile) server.
 
 use vessel_client::{Role, SignupMode, Vessel};
 
@@ -153,4 +153,30 @@ async fn recovery_replaces_the_recovery_key() {
     pc3.recover(&url, "alice@example.com", &second, "new password two 2", "pc-3")
         .await
         .unwrap();
+}
+
+/// The approval is tied to the fingerprint the person read out: the vault key goes only to keys
+/// with that fingerprint, whatever the server lists as pending.
+#[tokio::test]
+async fn an_approval_needs_the_fingerprint_of_the_keys_that_get_the_vault_key() {
+    let url = agent_with(|_| {}).await;
+    let mut alice = signup(&url, "alice@example.com", None).await;
+    let mut bob = signup(&url, "bob@example.com", None).await;
+    let vault = alice.create_vault("Time").await.unwrap();
+    let invite = alice.invite(vault, Role::Editor, None).await.unwrap();
+    bob.accept_invite(&invite.url).await.unwrap();
+    let bob_id = bob.status().user_id.unwrap();
+
+    // Someone else's fingerprint (here Alice's own), or none, approves nobody.
+    let wrong = alice.fingerprint().unwrap();
+    assert!(alice.approve_member_verified(vault, bob_id, &wrong).await.is_err());
+    assert!(alice.approve_member_verified(vault, bob_id, "").await.is_err());
+    bob.sync().await.unwrap();
+    assert!(bob.vaults().unwrap().iter().all(|v| v.id != vault));
+
+    // The right one does, however it was typed.
+    let spoken = bob.fingerprint().unwrap().replace(' ', "-");
+    alice.approve_member_verified(vault, bob_id, &spoken).await.unwrap();
+    bob.sync().await.unwrap();
+    assert!(bob.vaults().unwrap().iter().any(|v| v.id == vault));
 }

@@ -107,7 +107,6 @@ export interface Host {
   notes: string;
   startup_snippet_id: Uuid | null;
   keepalive_secs: number | null;
-  agent_forwarding: boolean;
 }
 export interface Group { label: string; parent_id: Uuid | null; identity_id: Uuid | null; color: string }
 export interface Identity { label: string; username: string; password: string | null; ssh_key_id: Uuid | null }
@@ -271,7 +270,7 @@ export const api = {
   members: (vaultId: Uuid) => invoke<MembersView>("members", { vaultId }),
   invite: (vaultId: Uuid, role: Role, email?: string) => invoke<InviteResponse>("invite", { vaultId, role, email: email || null }),
   acceptInvite: (token: string) => invoke<Uuid | null>("accept_invite", { token }),
-  approveMember: (vaultId: Uuid, userId: Uuid) => invoke<void>("approve_member", { vaultId, userId }),
+  approveMember: (vaultId: Uuid, userId: Uuid, fingerprint: string) => invoke<void>("approve_member", { vaultId, userId, fingerprint }),
   changeRole: (vaultId: Uuid, userId: Uuid, role: Role) => invoke<void>("change_role", { vaultId, userId, role }),
   removeMember: (vaultId: Uuid, userId: Uuid) => invoke<void>("remove_member", { vaultId, userId }),
   leaveVault: (vaultId: Uuid) => invoke<void>("leave_vault", { vaultId }),
@@ -316,7 +315,7 @@ export const blank = {
   host: (): Host => ({
     label: "", address: "", port: null, protocol: "ssh", group_id: null, identity_id: null, username: "",
     password: null, ssh_key_id: null, jump_host_id: null, tags: [], os: "", color: "", notes: "",
-    startup_snippet_id: null, keepalive_secs: null, agent_forwarding: false,
+    startup_snippet_id: null, keepalive_secs: null,
   }),
   group: (): Group => ({ label: "", parent_id: null, identity_id: null, color: "" }),
   identity: (): Identity => ({ label: "", username: "", password: null, ssh_key_id: null }),
