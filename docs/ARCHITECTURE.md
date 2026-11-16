@@ -262,7 +262,7 @@ As chaves privadas nunca vão para o disco em claro: são decifradas em memória
 
 ### 9.4 Atualizações
 
-O app consulta o `latest.json` do último release no GitHub ao abrir e uma vez por dia. Uma versão nova só é instalada depois que a pessoa confirma, e só se for exatamente a versão que ela viu. O instalador baixado tem de estar assinado com a chave do atualizador do projeto (Ed25519, formato minisign), cuja parte pública vem embutida no app; a assinatura cobre também o número da versão, então um instalador antigo e legítimo anunciado como versão nova é recusado, assim como qualquer versão que não seja mais nova que a instalada. Essa chave é independente do certificado de assinatura do Windows.
+O app consulta o `latest.json` do último release no GitHub ao abrir e a cada 10 minutos. Uma versão nova só é instalada depois que a pessoa confirma, e só se for exatamente a versão que ela viu. O instalador baixado tem de estar assinado com a chave do atualizador do projeto (Ed25519, formato minisign), cuja parte pública vem embutida no app; a assinatura cobre também o número da versão, então um instalador antigo e legítimo anunciado como versão nova é recusado, assim como qualquer versão que não seja mais nova que a instalada. Essa chave é independente do certificado de assinatura do Windows.
 
 ## 10. Assistentes de IA (MCP)
 

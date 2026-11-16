@@ -226,9 +226,10 @@ export function Workspace() {
     };
     document.addEventListener("keydown", onKey, true);
     document.addEventListener("mousemove", touch);
-    // Updates: shortly after opening, then once a day.
+    // Updates: shortly after opening, then every 10 minutes (the feed is a static file on GitHub,
+    // outside the API rate limits).
     const firstCheck = setTimeout(() => checkForUpdate(), 15_000);
-    const dailyCheck = setInterval(() => checkForUpdate(), 24 * 3600_000);
+    const periodicCheck = setInterval(() => checkForUpdate(), 10 * 60_000);
     const timer = setInterval(async () => {
       const minutes = settings()?.lock_after_minutes ?? 15;
       if (minutes > 0 && Date.now() - last > minutes * 60_000) setStatus(await api.lock());
@@ -238,7 +239,7 @@ export function Workspace() {
       document.removeEventListener("mousemove", touch);
       clearInterval(timer);
       clearTimeout(firstCheck);
-      clearInterval(dailyCheck);
+      clearInterval(periodicCheck);
     });
   });
 

@@ -84,7 +84,7 @@ docker compose exec -e VESSEL_BACKUP_PASSPHRASE agent vessel-agent restore /data
 
 ## Atualizações do app
 
-O app procura versões novas nos releases do GitHub (`latest.json`) ao abrir e uma vez por dia, mostra a versão e só instala quando a pessoa confirma. Cada instalador é assinado com a **chave do atualizador** do projeto. O app traz a chave pública e recusa qualquer atualização cuja assinatura não confira, inclusive a de um instalador antigo e legítimo anunciado como versão nova: a assinatura carrega o número da versão (`requireSignedVersion`).
+O app procura versões novas nos releases do GitHub (`latest.json`) ao abrir e a cada 10 minutos, mostra a versão e só instala quando a pessoa confirma. Cada instalador é assinado com a **chave do atualizador** do projeto. O app traz a chave pública e recusa qualquer atualização cuja assinatura não confira, inclusive a de um instalador antigo e legítimo anunciado como versão nova: a assinatura carrega o número da versão (`requireSignedVersion`).
 
 Essa chave não tem relação com o certificado do Windows: é grátis e gerada por você.
 

@@ -32,7 +32,7 @@ function Updates() {
   return (
     <div class="panel">
       <h3>Atualizações</h3>
-      <p>O Vessel procura versões novas ao abrir e uma vez por dia, e só instala quando você confirma. Cada atualização é assinada pelo projeto; uma assinatura que não confere é recusada.</p>
+      <p>O Vessel procura versões novas ao abrir e a cada 10 minutos, e só instala quando você confirma. Cada atualização é assinada pelo projeto; uma assinatura que não confere é recusada.</p>
       <Show when={updateStatus()?.current}><p class="sub">Versão instalada: {updateStatus()!.current}</p></Show>
       <div style={{ display: "flex", gap: "8px", "margin-top": "8px" }}>
         <Button icon="sync" onClick={check} disabled={checking()}>{checking() ? "Procurando…" : "Procurar atualizações"}</Button>
