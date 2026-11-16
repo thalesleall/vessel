@@ -43,7 +43,8 @@
     "shortDescription": "Terminal e SSH com sincronização criptografada self-hosted",
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "./windows/hooks.nsh"
       }
     },
     "resources": {
