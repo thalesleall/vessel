@@ -5,14 +5,15 @@ import { themePref, setThemePref, type ThemePref } from "./theme";
 import { transition } from "./motion";
 import { Button, Field, Icon, confirmAction } from "./ui";
 
-/** The app icon, drawn from the same shapes as `logo.svg` (the source of every icon file). */
+/** The app icon, the same drawing as `logo.svg` (the source of every icon file). Shown at 32 px, the
+ * size its pixel grid was drawn for, so every edge stays sharp. */
 export function Logo(props: { size?: number }) {
   return (
-    <svg class="brand-logo" viewBox="32 32 960 960" width={props.size ?? 30} height={props.size ?? 30} aria-hidden="true">
-      <rect x="32" y="32" width="960" height="960" rx="224" fill="#1558C9" />
-      <path d="M258 210 L472 404 L258 598" fill="none" stroke="#FFFFFF" stroke-width="76" stroke-linecap="round" stroke-linejoin="round" />
-      <rect x="540" y="196" width="142" height="402" rx="20" fill="#D4FF24" />
-      <path d="M188 652 H836 L748 806 Q734 830 706 830 H318 Q290 830 276 806 Z" fill="#030407" />
+    <svg class="brand-logo" viewBox="0 0 32 32" width={props.size ?? 32} height={props.size ?? 32} aria-hidden="true">
+      <rect width="32" height="32" rx="7" fill="#1558C9" />
+      <path d="M7 6H11L18 13L11 20H7L14 13Z" fill="#FFFFFF" />
+      <rect x="20" y="6" width="5" height="14" fill="#D4FF24" />
+      <path d="M4 23H28L24 27H8Z" fill="#030407" />
     </svg>
   );
 }

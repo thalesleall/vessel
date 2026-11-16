@@ -14,7 +14,7 @@ O cursor do terminal é o elemento que se repete em todo o app:
 
 | Onde | Como aparece |
 |---|---|
-| Logo | Um barco feito do prompt: o `>` e o bloco do cursor (na cor de sinal) são as velas, sobre um casco escuro, numa placa azul cobalto. A fonte é `apps/desktop/logo.svg`; os ícones do app saem dele com `npx tauri icon logo.svg` |
+| Logo | Um barco feito do prompt: o `>` e o bloco do cursor (na cor de sinal) são as velas, sobre um casco escuro, numa placa azul cobalto. Desenhado numa grade de 32 px (`apps/desktop/logo.svg`), com versões redesenhadas para 16, 24 e 48 px em `apps/desktop/icon-src/`, para que toda borda caia num pixel inteiro. Gere todos os ícones com `node scripts/build-icons.mjs` |
 | Item ativo do menu | Barrinha vertical na cor de sinal |
 | Foco | Anel na cor de sinal |
 | Terminal vivo | Ponto na cor de sinal |
