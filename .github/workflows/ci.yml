@@ -33,3 +33,20 @@ jobs:
       - name: Testes
         # Os testes de SSH real (laboratório em Docker) ficam de fora: são marcados #[ignore].
         run: cargo test --workspace --locked
+
+  audit:
+    # Avisos de segurança conhecidos nas dependências (RustSec e npm).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Dependências Rust
+        run: cargo audit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dependências JavaScript
+        working-directory: apps/desktop
+        run: npm audit --omit=dev

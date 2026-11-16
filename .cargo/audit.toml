@@ -1,0 +1,9 @@
+# Advisories `cargo audit` reports that do not apply here, each with the reason.
+[advisories]
+ignore = [
+    # crypto-bigint 0.5 (timing variability). It comes in only through elliptic-curve 0.13, which
+    # opaque-ke 4 depends on for traits. Vessel's OPAQUE suite is Ristretto255, whose arithmetic
+    # is curve25519-dalek: no secret goes through crypto-bigint. Drop this once opaque-ke 5 is
+    # released and adopted.
+    "RUSTSEC-2026-0387",
+]

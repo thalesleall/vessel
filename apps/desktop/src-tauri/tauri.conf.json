@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Vessel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "dev.vessel.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -28,13 +28,28 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico", "icons/icon.png"],
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
     "externalBin": [],
     "category": "DeveloperTool",
     "shortDescription": "Terminal e SSH com sincronização criptografada self-hosted",
     "windows": {
-      "nsis": { "installMode": "currentUser" }
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "resources": {
+      "../../../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md",
+      "../../../LICENSE-MIT": "LICENSE-MIT",
+      "../../../LICENSE-APACHE": "LICENSE-APACHE"
     }
   }
 }

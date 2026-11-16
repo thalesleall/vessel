@@ -51,10 +51,10 @@ through the `@fontsource` packages listed under JavaScript.
 | [block-padding](https://github.com/RustCrypto/utils) | 0.4.2 | MIT OR Apache-2.0 |
 | [block2](https://github.com/madsmtm/objc2) | 0.6.2 | MIT |
 | [blowfish](https://github.com/RustCrypto/block-ciphers) | 0.10.0 | MIT OR Apache-2.0 |
-| [brotli](https://github.com/dropbox/rust-brotli) | 9.1.1 | BSD-3-Clause AND MIT |
-| [brotli-decompressor](https://github.com/dropbox/rust-brotli-decompressor) | 6.3.1 | BSD-3-Clause/MIT |
+| [brotli](https://github.com/dropbox/rust-brotli) | 9.1.3 | BSD-3-Clause AND MIT |
+| [brotli-decompressor](https://github.com/dropbox/rust-brotli-decompressor) | 6.3.2 | BSD-3-Clause/MIT |
 | [bs58](https://github.com/Nullus157/bs58-rs) | 0.5.1 | MIT/Apache-2.0 |
-| [bumpalo](https://github.com/fitzgen/bumpalo) | 3.20.3 | MIT OR Apache-2.0 |
+| [bumpalo](https://github.com/fitzgen/bumpalo) | 3.20.4 | MIT OR Apache-2.0 |
 | [bytemuck](https://github.com/Lokathor/bytemuck) | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
 | [byteorder](https://github.com/BurntSushi/byteorder) | 1.5.0 | Unlicense OR MIT |
 | [bytes](https://github.com/tokio-rs/bytes) | 1.12.1 | MIT |
@@ -65,7 +65,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [cargo_toml](https://gitlab.com/lib.rs/cargo_toml) | 1.0.1 | Apache-2.0 OR MIT |
 | [cargo-platform](https://github.com/rust-lang/cargo) | 0.1.9 | MIT OR Apache-2.0 |
 | [cbc](https://github.com/RustCrypto/block-modes) | 0.2.1 | MIT OR Apache-2.0 |
-| [cc](https://github.com/rust-lang/cc-rs) | 1.11.1 | MIT OR Apache-2.0 |
+| [cc](https://github.com/rust-lang/cc-rs) | 1.11.2 | MIT OR Apache-2.0 |
 | [cesu8](https://github.com/emk/cesu8-rs) | 1.1.0 | Apache-2.0/MIT |
 | [cfb](https://github.com/mdsteele/rust-cfb) | 0.14.0 | MIT |
 | [cfg_aliases](https://github.com/katharostech/cfg_aliases) | 0.1.1 | MIT |
@@ -100,7 +100,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [cssparser](https://github.com/servo/rust-cssparser) | 0.37.0 | MPL-2.0 |
 | [cssparser](https://github.com/servo/rust-cssparser) | 0.38.0 | MPL-2.0 |
 | [cssparser-macros](https://github.com/servo/rust-cssparser) | 0.7.1 | MPL-2.0 |
-| [ctor](https://github.com/mmastrac/linktime) | 1.0.13 | Apache-2.0 OR MIT |
+| [ctor](https://github.com/mmastrac/linktime) | 1.0.14 | Apache-2.0 OR MIT |
 | [ctr](https://github.com/RustCrypto/block-modes) | 0.10.1 | MIT OR Apache-2.0 |
 | [ctutils](https://github.com/RustCrypto/utils) | 0.4.8 | Apache-2.0 OR MIT |
 | [curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek) | 4.1.3 | BSD-3-Clause |
@@ -246,10 +246,10 @@ through the `@fontsource` packages listed under JavaScript.
 | [itoa](https://github.com/dtolnay/itoa) | 1.0.19 | MIT OR Apache-2.0 |
 | [javascriptcore-rs](https://github.com/tauri-apps/javascriptcore-rs) | 1.1.2 | MIT |
 | [javascriptcore-rs-sys](https://github.com/tauri-apps/javascriptcore-rs) | 1.1.1 | MIT |
-| [jiff](https://github.com/BurntSushi/jiff) | 0.2.43 | Unlicense OR MIT |
-| [jiff-core](https://github.com/BurntSushi/jiff) | 0.1.5 | Unlicense OR MIT |
-| [jiff-static](https://github.com/BurntSushi/jiff) | 0.2.43 | Unlicense OR MIT |
-| [jiff-tzdb](https://github.com/BurntSushi/jiff) | 0.1.9 | Unlicense OR MIT |
+| [jiff](https://github.com/BurntSushi/jiff) | 0.2.46 | Unlicense OR MIT |
+| [jiff-core](https://github.com/BurntSushi/jiff) | 0.1.8 | Unlicense OR MIT |
+| [jiff-static](https://github.com/BurntSushi/jiff) | 0.2.46 | Unlicense OR MIT |
+| [jiff-tzdb](https://github.com/BurntSushi/jiff) | 0.1.10 | Unlicense OR MIT |
 | [jiff-tzdb-platform](https://github.com/BurntSushi/jiff) | 0.1.3 | Unlicense OR MIT |
 | [jni](https://github.com/jni-rs/jni-rs) | 0.21.1 | MIT/Apache-2.0 |
 | [jni](https://github.com/jni-rs/jni-rs) | 0.22.4 | MIT OR Apache-2.0 |
@@ -272,6 +272,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [libloading](https://github.com/nagisa/rust_libloading/) | 0.7.4 | ISC |
 | [libredox](https://gitlab.redox-os.org/redox-os/libredox.git) | 0.1.25 | MIT |
 | [libsqlite3-sys](https://github.com/rusqlite/rusqlite) | 0.40.0 | MIT |
+| [link-section](https://github.com/mmastrac/linktime) | 0.19.4 | Apache-2.0 OR MIT |
 | [litemap](https://github.com/unicode-org/icu4x) | 0.8.3 | Unicode-3.0 |
 | [lock_api](https://github.com/Amanieu/parking_lot) | 0.4.14 | MIT OR Apache-2.0 |
 | [log](https://github.com/rust-lang/log) | 0.4.35 | MIT OR Apache-2.0 |
@@ -286,7 +287,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [mime](https://github.com/hyperium/mime) | 0.3.18 | MIT OR Apache-2.0 |
 | [miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | [miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
-| [mio](https://github.com/tokio-rs/mio) | 1.2.4 | MIT |
+| [mio](https://github.com/tokio-rs/mio) | 1.2.5 | MIT |
 | [ml-kem](https://github.com/RustCrypto/KEMs) | 0.3.4 | Apache-2.0 OR MIT |
 | [module-lattice](https://github.com/RustCrypto/KEMs) | 0.2.4 | Apache-2.0 OR MIT |
 | [muda](https://github.com/tauri-apps/muda) | 0.20.0 | Apache-2.0 OR MIT |
@@ -349,7 +350,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [phf_shared](https://github.com/rust-phf/rust-phf) | 0.13.1 | MIT |
 | [phf_shared](https://github.com/rust-phf/rust-phf) | 0.14.0 | MIT |
 | [pin-project-lite](https://github.com/taiki-e/pin-project-lite) | 0.2.17 | Apache-2.0 OR MIT |
-| [pkcs1](https://github.com/RustCrypto/formats) | 0.8.0-rc.4 | Apache-2.0 OR MIT |
+| [pkcs1](https://github.com/RustCrypto/formats) | 0.8.0 | Apache-2.0 OR MIT |
 | [pkcs5](https://github.com/RustCrypto/formats) | 0.8.1 | Apache-2.0 OR MIT |
 | [pkcs8](https://github.com/RustCrypto/formats/tree/master/pkcs8) | 0.10.2 | Apache-2.0 OR MIT |
 | [pkcs8](https://github.com/RustCrypto/formats) | 0.11.0 | Apache-2.0 OR MIT |
@@ -380,7 +381,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [quote](https://github.com/dtolnay/quote) | 1.0.47 | MIT OR Apache-2.0 |
 | [r-efi](https://github.com/r-efi/r-efi) | 5.3.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later |
 | [r-efi](https://github.com/r-efi/r-efi) | 6.0.0 | MIT OR Apache-2.0 OR LGPL-2.1-or-later |
-| [rand](https://github.com/rust-random/rand) | 0.10.3 | MIT OR Apache-2.0 |
+| [rand](https://github.com/rust-random/rand) | 0.10.4 | MIT OR Apache-2.0 |
 | [rand](https://github.com/rust-random/rand) | 0.8.8 | MIT OR Apache-2.0 |
 | [rand](https://github.com/rust-random/rand) | 0.9.5 | MIT OR Apache-2.0 |
 | [rand_chacha](https://github.com/rust-random/rand) | 0.9.0 | MIT OR Apache-2.0 |
@@ -399,10 +400,10 @@ through the `@fontsource` packages listed under JavaScript.
 | [reqwest](https://github.com/seanmonstar/reqwest) | 0.13.5 | MIT OR Apache-2.0 |
 | [rfc6979](https://github.com/RustCrypto/signatures) | 0.6.0 | Apache-2.0 OR MIT |
 | [ring](https://github.com/briansmith/ring) | 0.17.14 | Apache-2.0 AND ISC |
-| [rsa](https://github.com/RustCrypto/RSA) | 0.10.0-rc.18 | MIT OR Apache-2.0 |
+| [rsa](https://github.com/RustCrypto/RSA) | 0.10.0 | MIT OR Apache-2.0 |
 | [rsqlite-vfs](https://github.com/Spxg/sqlite-wasm-rs) | 0.2.0 | MIT |
 | [rusqlite](https://github.com/rusqlite/rusqlite) | 0.42.0 | MIT |
-| [russh](https://github.com/warp-tech/russh) | 0.65.1 | Apache-2.0 |
+| [russh](https://github.com/warp-tech/russh) | 0.65.2 | Apache-2.0 |
 | [russh-cryptovec](https://github.com/warp-tech/russh) | 0.62.0 | Apache-2.0 |
 | [russh-util](https://github.com/warp-tech/russh) | 0.52.0 | Apache-2.0 |
 | [rustc_version](https://github.com/djc/rustc-version-rs) | 0.4.1 | MIT OR Apache-2.0 |
@@ -480,7 +481,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [sqlite-wasm-rs](https://github.com/Spxg/sqlite-wasm-rs) | 0.6.3 | MIT |
 | [ssh-cipher](https://github.com/RustCrypto/SSH) | 0.3.0 | Apache-2.0 OR MIT |
 | [ssh-encoding](https://github.com/RustCrypto/SSH) | 0.3.0 | Apache-2.0 OR MIT |
-| [ssh-key](https://github.com/RustCrypto/SSH) | 0.7.0-rc.11 | Apache-2.0 OR MIT |
+| [ssh-key](https://github.com/RustCrypto/SSH) | 0.7.0-rc.12 | Apache-2.0 OR MIT |
 | [stable_deref_trait](https://github.com/storyyeller/stable_deref_trait) | 1.2.1 | MIT OR Apache-2.0 |
 | [static_vcruntime](https://github.com/ChrisDenton/static_vcruntime) | 3.0.0 | MIT OR Apache-2.0 OR Zlib |
 | [string_cache](https://github.com/servo/string-cache) | 0.11.0 | MIT OR Apache-2.0 |
@@ -500,13 +501,13 @@ through the `@fontsource` packages listed under JavaScript.
 | [tao](https://github.com/tauri-apps/tao) | 0.37.2 | Apache-2.0 |
 | [tao-macros](https://github.com/tauri-apps/tao) | 0.1.4 | MIT OR Apache-2.0 |
 | [target-lexicon](https://github.com/bytecodealliance/target-lexicon) | 0.12.16 | Apache-2.0 WITH LLVM-exception |
-| [tauri](https://github.com/tauri-apps/tauri) | 2.12.5 | Apache-2.0 OR MIT |
-| [tauri-build](https://github.com/tauri-apps/tauri) | 2.7.4 | Apache-2.0 OR MIT |
-| [tauri-codegen](https://github.com/tauri-apps/tauri) | 2.7.4 | Apache-2.0 OR MIT |
-| [tauri-macros](https://github.com/tauri-apps/tauri) | 2.7.4 | Apache-2.0 OR MIT |
-| [tauri-runtime](https://github.com/tauri-apps/tauri) | 2.12.2 | Apache-2.0 OR MIT |
-| [tauri-runtime-wry](https://github.com/tauri-apps/tauri) | 2.12.3 | Apache-2.0 OR MIT |
-| [tauri-utils](https://github.com/tauri-apps/tauri) | 2.10.2 | Apache-2.0 OR MIT |
+| [tauri](https://github.com/tauri-apps/tauri) | 2.12.6 | Apache-2.0 OR MIT |
+| [tauri-build](https://github.com/tauri-apps/tauri) | 2.7.5 | Apache-2.0 OR MIT |
+| [tauri-codegen](https://github.com/tauri-apps/tauri) | 2.7.5 | Apache-2.0 OR MIT |
+| [tauri-macros](https://github.com/tauri-apps/tauri) | 2.7.5 | Apache-2.0 OR MIT |
+| [tauri-runtime](https://github.com/tauri-apps/tauri) | 2.12.3 | Apache-2.0 OR MIT |
+| [tauri-runtime-wry](https://github.com/tauri-apps/tauri) | 2.12.4 | Apache-2.0 OR MIT |
+| [tauri-utils](https://github.com/tauri-apps/tauri) | 2.10.3 | Apache-2.0 OR MIT |
 | [tauri-winres](https://github.com/tauri-apps/winres) | 0.3.7 | MIT |
 | [tendril](https://github.com/servo/html5ever) | 0.5.1 | MIT OR Apache-2.0 |
 | [thiserror](https://github.com/dtolnay/thiserror) | 1.0.69 | MIT OR Apache-2.0 |
@@ -674,7 +675,7 @@ Rust:
 
 - MIT OR Apache-2.0: 279
 - MIT: 133
-- Apache-2.0 OR MIT: 89
+- Apache-2.0 OR MIT: 90
 - MIT/Apache-2.0: 24
 - Unicode-3.0: 18
 - Zlib OR Apache-2.0 OR MIT: 17

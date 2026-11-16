@@ -1,6 +1,6 @@
 [package]
 name = "vessel-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Self-hosted, zero-knowledge sync agent for Vessel."
 edition.workspace = true
 license.workspace = true
