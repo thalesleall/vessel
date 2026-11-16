@@ -746,8 +746,7 @@ async fn require_unlocked(state: &AppState) -> Result<(), String> {
 
 /// With terminal input disabled an agent may still open a terminal to read it, but nothing
 /// that runs a command by itself: no custom programs and no profiles with arguments or
-/// environment (e.g. `powershell -Command ...`).
-/// With typing disabled: resolves the target once and returns exactly what will be spawned,
+/// environment (e.g. `powershell -Command ...`). Resolves the target once and returns exactly what will be spawned,
 /// refusing anything that runs a command by itself. Returning the checked profile (instead of
 /// re-reading it when spawning) closes the window for a concurrent edit.
 async fn check_plain_shell(state: &AppState, target: LocalTarget) -> Result<LocalTarget, String> {
@@ -779,6 +778,60 @@ fn require_input(state: &AppState) -> Result<(), String> {
             "Typing into terminals is disabled for agents in Vessel settings (Agentes de IA)."
                 .into(),
         )
+    }
+}
+
+/// What in `new` would run a command later, when the user opens a terminal, connects to a host
+/// or runs a snippet. `old` is the item being edited: only what the edit changes counts, so an
+/// agent can still rename a host that already has a snippet on connect.
+fn command_it_would_plant(old: Option<&Entity>, new: &Entity) -> Option<&'static str> {
+    match (old, new) {
+        (None, Entity::Snippet(_)) => Some("a snippet"),
+        (Some(Entity::Snippet(o)), Entity::Snippet(n)) if o.script != n.script => {
+            Some("a snippet's script")
+        }
+        (old, Entity::TerminalProfile(n)) if ops::runs_custom_command(n) => match old {
+            Some(Entity::TerminalProfile(o))
+                if o.shell == n.shell && o.args == n.args && o.env == n.env =>
+            {
+                None
+            }
+            _ => Some("a terminal profile with its own program, arguments or environment"),
+        },
+        (old, Entity::Host(n)) if n.startup_snippet_id.is_some() => match old {
+            Some(Entity::Host(o)) if o.startup_snippet_id == n.startup_snippet_id => None,
+            _ => Some("a snippet that runs when connecting to a host"),
+        },
+        _ => None,
+    }
+}
+
+/// With typing disabled an agent must not get commands run another way: by saving something
+/// the user will run later without reading it again (see [`command_it_would_plant`]).
+fn require_inert(state: &AppState, old: Option<&Entity>, new: &Entity) -> Result<(), String> {
+    if state.settings().mcp_allow_terminal_input {
+        return Ok(());
+    }
+    match command_it_would_plant(old, new) {
+        Some(what) => Err(format!(
+            "Running commands is disabled for agents in Vessel settings (Agentes de IA), so agents cannot save {what}: the user would run it later. Ask the user to do it in the app."
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Settings agents may not change: how soon the app locks itself protects the vault from
+/// whoever sits at the computer, and is the user's decision.
+fn require_same_lock_timeout(old: Option<&Entity>, new: &Entity) -> Result<(), String> {
+    let Entity::Settings(n) = new else { return Ok(()) };
+    let unchanged = match old {
+        Some(Entity::Settings(o)) => o.lock_after_minutes == n.lock_after_minutes,
+        _ => n.lock_after_minutes == vessel_client::model::Settings::default().lock_after_minutes,
+    };
+    if unchanged {
+        Ok(())
+    } else {
+        Err("agents cannot change when Vessel locks itself (lock_after_minutes); the user sets it in Configurações.".into())
     }
 }
 
@@ -887,6 +940,8 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
             let entity: Entity =
                 serde_json::from_value(json!({ "type": kind_name(kind), "data": data }))
                     .map_err(|e| format!("invalid data: {e}"))?;
+            require_inert(state, None, &entity)?;
+            require_same_lock_timeout(None, &entity)?;
             let mut vessel = state.vessel.lock().await;
             let vault = match arg_str(args, "vault_id") {
                 Some(v) => v.parse().map_err(|_| "invalid vault_id")?,
@@ -941,6 +996,8 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
             }
             let entity: Entity =
                 serde_json::from_value(value).map_err(|e| format!("invalid data: {e}"))?;
+            require_inert(state, Some(&item.entity), &entity)?;
+            require_same_lock_timeout(Some(&item.entity), &entity)?;
             vessel.save(item.vault_id, Some(id), entity).map_err(err)?;
             let updated = vessel
                 .item(item.vault_id, id)
@@ -978,6 +1035,9 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                     kind_name(item.entity.kind())
                 ));
             }
+            // A profile from a shared vault asks the user before running its own command; moved
+            // to another vault it would count as new there, so it is checked like a new item.
+            require_inert(state, None, &item.entity)?;
             let new_id = vessel.move_item(item.vault_id, to, id).map_err(err)?;
             drop(vessel);
             state.changed();
@@ -1220,11 +1280,10 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
     }
 }
 
-/// Waits until a session produced no output for `idle`, or `timeout` passed. Returns whether it
-/// went quiet (true) rather than timing out.
 /// Waits until the session has produced output beyond `since` and then stayed quiet for `idle`.
 /// The idle clock only starts with the first new output, so a slow-starting shell (WSL cold
-/// start) is not mistaken for a finished command.
+/// start) is not mistaken for a finished command. Returns whether it went quiet (true) rather than
+/// timing out.
 async fn wait_for_quiet(
     state: &AppState,
     id: Uuid,
@@ -1333,5 +1392,43 @@ mod tests {
         for t in tools {
             assert!(t["name"].is_string() && t["inputSchema"]["type"] == "object");
         }
+    }
+
+    #[test]
+    fn edits_that_would_run_commands_later_are_spotted() {
+        use vessel_client::model::{Settings, Snippet, TerminalProfile};
+        let plain = Entity::TerminalProfile(TerminalProfile { label: "PS".into(), ..Default::default() });
+        let custom = Entity::TerminalProfile(TerminalProfile {
+            label: "PS".into(),
+            args: vec!["-Command".into(), "calc".into()],
+            ..Default::default()
+        });
+        assert!(command_it_would_plant(None, &plain).is_none());
+        assert!(command_it_would_plant(None, &custom).is_some());
+        assert!(command_it_would_plant(Some(&plain), &custom).is_some());
+        // Renaming a profile that already runs a command changes nothing about what runs.
+        let Entity::TerminalProfile(mut renamed) = custom.clone() else { unreachable!() };
+        renamed.label = "Outro nome".into();
+        assert!(command_it_would_plant(Some(&custom), &Entity::TerminalProfile(renamed)).is_none());
+
+        let snippet = |script: &str| Entity::Snippet(Snippet { label: "s".into(), script: script.into(), ..Default::default() });
+        assert!(command_it_would_plant(None, &snippet("uptime")).is_some());
+        assert!(command_it_would_plant(Some(&snippet("uptime")), &snippet("rm -rf /")).is_some());
+        assert!(command_it_would_plant(Some(&snippet("uptime")), &snippet("uptime")).is_none());
+
+        let host = |snippet: Option<Uuid>| Entity::Host(Host { label: "h".into(), startup_snippet_id: snippet, ..Default::default() });
+        let id = Uuid::now_v7();
+        assert!(command_it_would_plant(None, &host(None)).is_none());
+        assert!(command_it_would_plant(Some(&host(None)), &host(Some(id))).is_some());
+        assert!(command_it_would_plant(Some(&host(Some(id))), &host(Some(id))).is_none());
+
+        // The lock timeout is the user's to set.
+        let settings = |minutes| Entity::Settings(Settings { lock_after_minutes: minutes, ..Default::default() });
+        let default = Settings::default().lock_after_minutes;
+        assert!(require_same_lock_timeout(Some(&settings(15)), &settings(0)).is_err());
+        assert!(require_same_lock_timeout(Some(&settings(15)), &settings(15)).is_ok());
+        assert!(require_same_lock_timeout(None, &settings(default)).is_ok());
+        assert!(require_same_lock_timeout(None, &settings(default + 1)).is_err());
+        assert!(require_same_lock_timeout(None, &host(None)).is_ok());
     }
 }

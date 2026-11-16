@@ -20,7 +20,8 @@ pub struct LocalSettings {
     pub mcp_enabled: bool,
     pub mcp_port: u16,
     pub mcp_token: String,
-    /// Let agents type into terminals and run commands (they can always read them).
+    /// Let agents type into terminals and run commands (they can always read them). Off until
+    /// the user turns it on.
     pub mcp_allow_terminal_input: bool,
     /// Let agents create, edit and delete items.
     pub mcp_allow_writes: bool,
@@ -34,8 +35,8 @@ impl Default for LocalSettings {
             mcp_enabled: false,
             mcp_port: 47011,
             mcp_token: String::new(),
-            mcp_allow_terminal_input: true,
-            mcp_allow_writes: true,
+            mcp_allow_terminal_input: false,
+            mcp_allow_writes: false,
         }
     }
 }
