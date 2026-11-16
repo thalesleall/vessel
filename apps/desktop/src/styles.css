@@ -116,13 +116,7 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 
 /* ------------------------------------------------------------------ brand: the caret mark */
 .brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px 18px; }
-.brand-logo {
-  width: 30px; height: 30px; border-radius: 8px; background: var(--structure); position: relative; flex: none;
-}
-.brand-logo::after {
-  content: ""; position: absolute; left: 9px; top: 8px; width: 7px; height: 14px; border-radius: 1.5px; background: var(--signal);
-}
-.brand-logo .icon { display: none; }
+.brand-logo { flex: none; display: block; }
 .brand-name { font-weight: 600; font-size: var(--fs-md); }
 .brand-sub { color: var(--text-3); font-size: var(--fs-xs); }
 
@@ -409,7 +403,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius
 @media (max-width: 760px) {
   .choices { grid-template-columns: 1fr; }
   .app { grid-template-columns: 64px 1fr; }
-  .nav-item span, .brand > div:not(.brand-logo), .account-chip .meta { display: none; }
+  .nav-item span, .brand > div, .account-chip .meta { display: none; }
 }
 .link-like { background: none; border: 0; cursor: pointer; text-align: left; font: inherit; }
 .update-line { color: var(--structure); font-weight: 600; }

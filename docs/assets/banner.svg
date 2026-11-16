@@ -2,10 +2,12 @@
   <title id="t">Vessel</title>
   <desc id="d">Terminal e SSH com sincronização criptografada de ponta a ponta.</desc>
   <rect width="1280" height="320" rx="24" fill="#030407"/>
-  <g transform="translate(96 104)">
-    <rect width="112" height="112" rx="26" fill="#1558C9"/>
-    <rect x="44" y="32" width="24" height="48" rx="4" fill="#D4FF24"/>
-  </g>
+  <svg x="96" y="104" width="112" height="112" viewBox="32 32 960 960">
+    <rect x="32" y="32" width="960" height="960" rx="224" fill="#1558C9"/>
+    <path d="M258 210 L472 404 L258 598" fill="none" stroke="#FFFFFF" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="540" y="196" width="142" height="402" rx="20" fill="#D4FF24"/>
+    <path d="M188 652 H836 L748 806 Q734 830 706 830 H318 Q290 830 276 806 Z" fill="#030407"/>
+  </svg>
   <text x="240" y="164" fill="#EDF0F7" font-family="IBM Plex Sans, Segoe UI, Helvetica, Arial, sans-serif" font-size="76" font-weight="600" letter-spacing="-1">Vessel</text>
   <text x="242" y="206" fill="#A3ACC2" font-family="IBM Plex Sans, Segoe UI, Helvetica, Arial, sans-serif" font-size="24">Terminal e SSH com sincronização criptografada</text>
   <text x="242" y="238" fill="#A3ACC2" font-family="IBM Plex Sans, Segoe UI, Helvetica, Arial, sans-serif" font-size="24">de ponta a ponta. Você escolhe onde seus dados ficam.</text>

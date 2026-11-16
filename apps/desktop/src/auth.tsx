@@ -5,10 +5,22 @@ import { themePref, setThemePref, type ThemePref } from "./theme";
 import { transition } from "./motion";
 import { Button, Field, Icon, confirmAction } from "./ui";
 
+/** The app icon, drawn from the same shapes as `logo.svg` (the source of every icon file). */
+export function Logo(props: { size?: number }) {
+  return (
+    <svg class="brand-logo" viewBox="32 32 960 960" width={props.size ?? 30} height={props.size ?? 30} aria-hidden="true">
+      <rect x="32" y="32" width="960" height="960" rx="224" fill="#1558C9" />
+      <path d="M258 210 L472 404 L258 598" fill="none" stroke="#FFFFFF" stroke-width="76" stroke-linecap="round" stroke-linejoin="round" />
+      <rect x="540" y="196" width="142" height="402" rx="20" fill="#D4FF24" />
+      <path d="M188 652 H836 L748 806 Q734 830 706 830 H318 Q290 830 276 806 Z" fill="#030407" />
+    </svg>
+  );
+}
+
 export function Brand(props: { sub?: string }) {
   return (
     <div class="brand">
-      <div class="brand-logo" />
+      <Logo />
       <div>
         <div class="brand-name">Vessel</div>
         <Show when={props.sub}><div class="brand-sub">{props.sub}</div></Show>
