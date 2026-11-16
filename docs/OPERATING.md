@@ -90,18 +90,20 @@ Essa chave não tem relação com o certificado do Windows: é grátis e gerada 
 
 ### Gerar o par de chaves (uma vez)
 
-Em `apps/desktop`, rode:
+Em `apps/desktop`, rode no PowerShell:
 
 ```bash
-npx tauri signer generate -w ~/.tauri/vessel-updater.key
+npx tauri signer generate -w "$HOME.tauriessel-updater.key"
 ```
 
-O comando pede uma senha para a chave e grava dois arquivos: `vessel-updater.key` (privada) e `vessel-updater.key.pub` (pública).
+No PowerShell, `~` não vira a pasta do usuário num argumento: o comando criaria uma pasta chamada `~` dentro do repositório. Use `$HOME` como acima (no bash ou zsh, `~/.tauri/vessel-updater.key` funciona). Os arquivos `*.key` estão no `.gitignore` por segurança.
+
+O comando pede uma senha para a chave (pode ficar vazia) e grava dois arquivos: `vessel-updater.key` (privada) e `vessel-updater.key.pub` (pública).
 
 1. **Chave pública:** copie o conteúdo de `vessel-updater.key.pub` para `plugins.updater.pubkey` em `apps/desktop/src-tauri/tauri.conf.json` e faça um commit. Ela não é segredo.
 2. **Chave privada:** em **GitHub → Settings → Secrets and variables → Actions**, crie dois segredos:
    - `TAURI_SIGNING_PRIVATE_KEY`: o conteúdo inteiro de `vessel-updater.key`;
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: a senha escolhida.
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: a senha escolhida. Se a chave não tem senha, não crie este segredo.
 3. **Backup:** guarde a chave privada e a senha fora do computador e fora do GitHub (por exemplo num gerenciador de senhas e num pendrive). **Sem ela, os apps já instalados nunca mais aceitam uma atualização**, e cada pessoa teria de reinstalar à mão.
 
 Nunca coloque a chave privada no repositório nem a envie em mensagens.

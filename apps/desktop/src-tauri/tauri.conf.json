@@ -54,7 +54,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "COLE_AQUI_A_CHAVE_PUBLICA_DO_ATUALIZADOR",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYzRUFDQkFCOTlFMDc3NjAKUldSZ2QrQ1pxOHZxWTV0M2k1ekNnQUd1Z09UcDBkdjBRMU1kSG9vM0tpdWFvNFRkaTQxUzhMaUYK",
       "endpoints": [
         "https://github.com/thalesleall/vessel/releases/latest/download/latest.json"
       ],

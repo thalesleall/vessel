@@ -9,3 +9,7 @@ deploy/.env
 deploy/dev/.lab/
 apps/desktop/src-tauri/binaries/
 .claude/
+# Updater signing keys and anything a shell left in a literal "~" folder: never commit.
+*.key
+*.key.pub
+**/~/
