@@ -705,3 +705,18 @@ pub async fn mcp_activity(state: S<'_>) -> CmdResult<Vec<Activity>> {
         .cloned()
         .collect())
 }
+
+// -- updates ----------------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn update_check(app: tauri::AppHandle) -> CmdResult<crate::update::UpdateStatus> {
+    crate::update::check(&app).await
+}
+
+/// Installs the version the user confirmed. Terminals and forwards end: the app restarts.
+#[tauri::command]
+pub async fn update_install(state: S<'_>, version: String) -> CmdResult<()> {
+    state.terms.close_all();
+    state.forwards.stop_all();
+    crate::update::install(&state.app, &version).await
+}

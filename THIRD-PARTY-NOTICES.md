@@ -81,8 +81,10 @@ through the `@fontsource` packages listed under JavaScript.
 | [combine](https://github.com/Marwes/combine) | 4.6.9 | MIT |
 | [const-oid](https://github.com/RustCrypto/formats) | 0.10.3 | Apache-2.0 OR MIT |
 | [const-oid](https://github.com/RustCrypto/formats/tree/master/const-oid) | 0.9.6 | Apache-2.0 OR MIT |
+| [constant_time_eq](https://codeberg.org/cesarb/constant_time_eq) | 0.6.1 | CC0-1.0 OR MIT-0 OR Apache-2.0 |
 | [cookie](https://github.com/SergioBenitez/cookie-rs) | 0.18.2 | MIT OR Apache-2.0 |
 | [core-foundation](https://github.com/servo/core-foundation-rs) | 0.10.1 | MIT OR Apache-2.0 |
+| [core-foundation](https://github.com/servo/core-foundation-rs) | 0.9.4 | MIT OR Apache-2.0 |
 | [core-foundation-sys](https://github.com/servo/core-foundation-rs) | 0.8.7 | MIT OR Apache-2.0 |
 | [core-graphics](https://github.com/servo/core-foundation-rs) | 0.25.0 | MIT OR Apache-2.0 |
 | [core-graphics-types](https://github.com/servo/core-foundation-rs) | 0.2.0 | MIT OR Apache-2.0 |
@@ -159,6 +161,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [fiat-crypto](https://github.com/mit-plv/fiat-crypto) | 0.3.0 | MIT OR Apache-2.0 OR BSD-1-Clause |
 | [field-offset](https://github.com/Diggsey/rust-field-offset) | 0.3.6 | MIT OR Apache-2.0 |
 | [filedescriptor](https://github.com/wezterm/wezterm) | 0.8.3 | MIT |
+| [filetime](https://github.com/alexcrichton/filetime) | 0.2.29 | MIT/Apache-2.0 |
 | [find-msvc-tools](https://github.com/rust-lang/cc-rs) | 0.1.15 | MIT OR Apache-2.0 |
 | [flate2](https://github.com/rust-lang/flate2-rs) | 1.1.11 | MIT OR Apache-2.0 |
 | [fnv](https://github.com/servo/rust-fnv) | 1.0.7 | Apache-2.0 / MIT |
@@ -273,6 +276,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [libredox](https://gitlab.redox-os.org/redox-os/libredox.git) | 0.1.25 | MIT |
 | [libsqlite3-sys](https://github.com/rusqlite/rusqlite) | 0.40.0 | MIT |
 | [link-section](https://github.com/mmastrac/linktime) | 0.19.4 | Apache-2.0 OR MIT |
+| [linux-raw-sys](https://github.com/sunfishcode/linux-raw-sys) | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [litemap](https://github.com/unicode-org/icu4x) | 0.8.3 | Unicode-3.0 |
 | [lock_api](https://github.com/Amanieu/parking_lot) | 0.4.14 | MIT OR Apache-2.0 |
 | [log](https://github.com/rust-lang/log) | 0.4.35 | MIT OR Apache-2.0 |
@@ -285,6 +289,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [memchr](https://github.com/BurntSushi/memchr) | 2.8.3 | Unlicense OR MIT |
 | [memoffset](https://github.com/Gilnaa/memoffset) | 0.9.1 | MIT |
 | [mime](https://github.com/hyperium/mime) | 0.3.18 | MIT OR Apache-2.0 |
+| [minisign-verify](https://github.com/jedisct1/rust-minisign-verify) | 0.3.0 | MIT |
 | [miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | [miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | [mio](https://github.com/tokio-rs/mio) | 1.2.5 | MIT |
@@ -297,6 +302,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [new_debug_unreachable](https://github.com/mbrubeck/rust-debug-unreachable) | 1.0.6 | MIT |
 | [nix](https://github.com/nix-rust/nix) | 0.28.0 | MIT |
 | [nix](https://github.com/nix-rust/nix) | 0.31.3 | MIT |
+| [nix](https://github.com/nix-rust/nix) | 0.32.0 | MIT |
 | [nu-ansi-term](https://github.com/nushell/nu-ansi-term) | 0.50.3 | MIT |
 | [num_enum](https://github.com/illicitonion/num_enum) | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
 | [num_enum_derive](https://github.com/illicitonion/num_enum) | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
@@ -317,6 +323,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [objc2-exception-helper](https://github.com/madsmtm/objc2) | 0.1.1 | Zlib OR Apache-2.0 OR MIT |
 | [objc2-foundation](https://github.com/madsmtm/objc2) | 0.3.2 | MIT |
 | [objc2-io-surface](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| [objc2-osa-kit](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | [objc2-quartz-core](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | [objc2-ui-kit](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
 | [objc2-user-notifications](https://github.com/madsmtm/objc2) | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
@@ -325,6 +332,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [opaque-ke](https://github.com/facebook/opaque-ke) | 4.0.1 | Apache-2.0 OR MIT |
 | [openssl-probe](https://github.com/rustls/openssl-probe) | 0.2.2 | MIT OR Apache-2.0 |
 | [option-ext](https://github.com/soc/option-ext.git) | 0.2.0 | MPL-2.0 |
+| [osakit](https://github.com/mdevils/rust-osakit) | 0.3.1 | MIT OR Apache-2.0 |
 | [p256](https://github.com/RustCrypto/elliptic-curves) | 0.14.0 | Apache-2.0 OR MIT |
 | [p384](https://github.com/RustCrypto/elliptic-curves) | 0.14.0 | Apache-2.0 OR MIT |
 | [p521](https://github.com/RustCrypto/elliptic-curves) | 0.14.0 | Apache-2.0 OR MIT |
@@ -408,6 +416,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [russh-util](https://github.com/warp-tech/russh) | 0.52.0 | Apache-2.0 |
 | [rustc_version](https://github.com/djc/rustc-version-rs) | 0.4.1 | MIT OR Apache-2.0 |
 | [rustc-hash](https://github.com/rust-lang/rustc-hash) | 2.1.3 | Apache-2.0 OR MIT |
+| [rustix](https://github.com/bytecodealliance/rustix) | 1.1.6 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | [rustls](https://github.com/rustls/rustls) | 0.23.46 | Apache-2.0 OR ISC OR MIT |
 | [rustls-native-certs](https://github.com/rustls/rustls-native-certs) | 0.8.5 | Apache-2.0 OR ISC OR MIT |
 | [rustls-pki-types](https://github.com/rustls/pki-types) | 1.16.0 | MIT OR Apache-2.0 |
@@ -497,18 +506,24 @@ through the `@fontsource` packages listed under JavaScript.
 | [syn](https://github.com/dtolnay/syn) | 3.0.10 | MIT OR Apache-2.0 |
 | [sync_wrapper](https://github.com/Actyx/sync_wrapper) | 1.0.2 | Apache-2.0 |
 | [synstructure](https://github.com/mystor/synstructure) | 0.14.0 | MIT |
+| [system-configuration](https://github.com/mullvad/system-configuration-rs) | 0.7.0 | MIT OR Apache-2.0 |
+| [system-configuration-sys](https://github.com/mullvad/system-configuration-rs) | 0.6.0 | MIT OR Apache-2.0 |
 | [system-deps](https://github.com/gdesmott/system-deps) | 6.2.2 | MIT OR Apache-2.0 |
 | [tao](https://github.com/tauri-apps/tao) | 0.37.2 | Apache-2.0 |
 | [tao-macros](https://github.com/tauri-apps/tao) | 0.1.4 | MIT OR Apache-2.0 |
+| [tar](https://github.com/composefs/tar-rs) | 0.4.46 | MIT OR Apache-2.0 |
 | [target-lexicon](https://github.com/bytecodealliance/target-lexicon) | 0.12.16 | Apache-2.0 WITH LLVM-exception |
 | [tauri](https://github.com/tauri-apps/tauri) | 2.12.6 | Apache-2.0 OR MIT |
 | [tauri-build](https://github.com/tauri-apps/tauri) | 2.7.5 | Apache-2.0 OR MIT |
 | [tauri-codegen](https://github.com/tauri-apps/tauri) | 2.7.5 | Apache-2.0 OR MIT |
 | [tauri-macros](https://github.com/tauri-apps/tauri) | 2.7.5 | Apache-2.0 OR MIT |
+| [tauri-plugin](https://github.com/tauri-apps/tauri) | 2.7.3 | Apache-2.0 OR MIT |
+| [tauri-plugin-updater](https://github.com/tauri-apps/plugins-workspace) | 2.14.1 | Apache-2.0 OR MIT |
 | [tauri-runtime](https://github.com/tauri-apps/tauri) | 2.12.3 | Apache-2.0 OR MIT |
 | [tauri-runtime-wry](https://github.com/tauri-apps/tauri) | 2.12.4 | Apache-2.0 OR MIT |
 | [tauri-utils](https://github.com/tauri-apps/tauri) | 2.10.3 | Apache-2.0 OR MIT |
 | [tauri-winres](https://github.com/tauri-apps/winres) | 0.3.7 | MIT |
+| [tempfile](https://github.com/Stebalien/tempfile) | 3.27.0 | MIT OR Apache-2.0 |
 | [tendril](https://github.com/servo/html5ever) | 0.5.1 | MIT OR Apache-2.0 |
 | [thiserror](https://github.com/dtolnay/thiserror) | 1.0.69 | MIT OR Apache-2.0 |
 | [thiserror](https://github.com/dtolnay/thiserror) | 2.0.21 | MIT OR Apache-2.0 |
@@ -549,6 +564,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [try-lock](https://github.com/seanmonstar/try-lock) | 0.2.5 | MIT |
 | [tungstenite](https://github.com/snapview/tungstenite-rs) | 0.29.0 | MIT OR Apache-2.0 |
 | [tungstenite](https://github.com/snapview/tungstenite-rs) | 0.30.0 | MIT OR Apache-2.0 |
+| [typed-path](https://github.com/chipsenkbeil/typed-path) | 0.13.0 | MIT OR Apache-2.0 |
 | [typeid](https://github.com/dtolnay/typeid) | 1.0.3 | MIT OR Apache-2.0 |
 | [typenum](https://github.com/paholg/typenum) | 1.20.1 | MIT OR Apache-2.0 |
 | [unicode-ident](https://github.com/dtolnay/unicode-ident) | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 |
@@ -618,6 +634,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [windows-interface](https://github.com/microsoft/windows-rs) | 0.59.3 | MIT OR Apache-2.0 |
 | [windows-link](https://github.com/microsoft/windows-rs) | 0.2.1 | MIT OR Apache-2.0 |
 | [windows-numerics](https://github.com/microsoft/windows-rs) | 0.3.1 | MIT OR Apache-2.0 |
+| [windows-registry](https://github.com/microsoft/windows-rs) | 0.6.1 | MIT OR Apache-2.0 |
 | [windows-result](https://github.com/microsoft/windows-rs) | 0.4.1 | MIT OR Apache-2.0 |
 | [windows-strings](https://github.com/microsoft/windows-rs) | 0.5.1 | MIT OR Apache-2.0 |
 | [windows-sys](https://github.com/microsoft/windows-rs) | 0.45.0 | MIT OR Apache-2.0 |
@@ -638,6 +655,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [x11](https://github.com/AltF02/x11-rs.git) | 2.21.0 | MIT |
 | [x11-dl](https://github.com/AltF02/x11-rs.git) | 2.21.0 | MIT |
 | [x25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/x25519-dalek) | 3.0.0 | BSD-3-Clause |
+| [xattr](https://github.com/Stebalien/xattr) | 1.7.0 | MIT OR Apache-2.0 |
 | [yoke](https://github.com/unicode-org/icu4x) | 0.8.4 | Unicode-3.0 |
 | [yoke-derive](https://github.com/unicode-org/icu4x) | 0.8.4 | Unicode-3.0 |
 | [zerocopy](https://github.com/google/zerocopy) | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT |
@@ -649,6 +667,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [zerotrie](https://github.com/unicode-org/icu4x) | 0.2.5 | Unicode-3.0 |
 | [zerovec](https://github.com/unicode-org/icu4x) | 0.11.9 | Unicode-3.0 |
 | [zerovec-derive](https://github.com/unicode-org/icu4x) | 0.11.7 | Unicode-3.0 |
+| [zip](https://github.com/zip-rs/zip2) | 9.6.0 | MIT |
 | [zlib-rs](https://github.com/trifectatechfoundation/zlib-rs) | 0.6.8 | Zlib |
 | [zmij](https://github.com/dtolnay/zmij) | 1.0.23 | MIT |
 
@@ -673,22 +692,23 @@ through the `@fontsource` packages listed under JavaScript.
 
 Rust:
 
-- MIT OR Apache-2.0: 279
-- MIT: 133
-- Apache-2.0 OR MIT: 90
-- MIT/Apache-2.0: 24
+- MIT OR Apache-2.0: 288
+- MIT: 136
+- Apache-2.0 OR MIT: 92
+- MIT/Apache-2.0: 25
+- Zlib OR Apache-2.0 OR MIT: 18
 - Unicode-3.0: 18
-- Zlib OR Apache-2.0 OR MIT: 17
 - Unlicense OR MIT: 9
 - BSD-3-Clause: 8
 - MPL-2.0: 7
 - Apache-2.0: 6
 - Apache-2.0/MIT: 5
+- Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT: 5
 - Apache-2.0 OR ISC OR MIT: 3
 - ISC: 3
 - MIT OR Apache-2.0 OR Zlib: 3
-- Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT: 3
 - CDLA-Permissive-2.0: 3
+- CC0-1.0 OR MIT-0 OR Apache-2.0: 2
 - MIT OR Apache-2.0 OR BSD-1-Clause: 2
 - Zlib: 2
 - MIT OR Zlib OR Apache-2.0: 2
@@ -702,7 +722,6 @@ Rust:
 - BSD-3-Clause AND MIT: 1
 - BSD-3-Clause/MIT: 1
 - Apache-2.0 AND MIT: 1
-- CC0-1.0 OR MIT-0 OR Apache-2.0: 1
 - Apache-2.0 / MIT: 1
 - MIT AND BSD-3-Clause: 1
 - Apache-2.0 AND ISC: 1

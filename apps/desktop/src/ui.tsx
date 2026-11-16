@@ -22,6 +22,7 @@ const paths: Record<string, string> = {
   edit: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
   play: "M7 5l12 7-12 7z",
+  download: "M12 4v11M7 10l5 5 5-5M5 20h14",
   stop: "M7 7h10v10H7z",
   folder: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
   lock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3",

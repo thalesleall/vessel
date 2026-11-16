@@ -260,6 +260,10 @@ Um perfil guardado num cofre compartilhado que rode um programa próprio, argume
 
 As chaves privadas nunca vão para o disco em claro: são decifradas em memória no momento da conexão.
 
+### 9.4 Atualizações
+
+O app consulta o `latest.json` do último release no GitHub ao abrir e uma vez por dia. Uma versão nova só é instalada depois que a pessoa confirma, e só se for exatamente a versão que ela viu. O instalador baixado tem de estar assinado com a chave do atualizador do projeto (Ed25519, formato minisign), cuja parte pública vem embutida no app; a assinatura cobre também o número da versão, então um instalador antigo e legítimo anunciado como versão nova é recusado, assim como qualquer versão que não seja mais nova que a instalada. Essa chave é independente do certificado de assinatura do Windows.
+
 ## 10. Assistentes de IA (MCP)
 
 O app embute um servidor MCP para que assistentes operem o Vessel. Ele fica no app, e não no agente, porque só ali os dados estão decifrados.
@@ -298,5 +302,5 @@ Para não perder dados: o app grava um backup cifrado do banco antes de migrar; 
 - A confiança nas chaves de outras pessoas começa no primeiro contato; a conferência da impressão digital na aprovação é o que fecha essa janela.
 - O servidor vê quantos registros cada cofre tem e o tamanho deles arredondado para 256 bytes.
 - Registros antigos no formato 1 não protegem a versão nem a marca de exclusão até serem regravados, o que acontece sozinho na primeira sincronização de quem pode escrever no cofre.
-- O instalador do Windows ainda não é assinado. macOS e Linux não têm instalador.
+- O instalador do Windows ainda não tem certificado de assinatura de código (as atualizações são assinadas pela chave do atualizador, §9.4). macOS e Linux não têm instalador.
 - Não há verificação de e-mail no cadastro. Num servidor com cadastro aberto, a tela de cadastro revela se um e-mail já tem conta.

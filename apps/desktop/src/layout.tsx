@@ -2,8 +2,9 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, o
 import { api, shellLabel, type Shell } from "./api";
 import {
   activeTab, itemsOf, lastSync, ownProfiles, section, sessions, setActiveTab, setSection, setStatus, settings, status, syncError, syncing,
-  refreshSessions, type Section,
+  refreshSessions, checkForUpdate, updateStatus, type Section,
 } from "./store";
+import { installUpdate } from "./update";
 import { HostKeyPrompt, TerminalView, connectHost, openProfile } from "./terminal";
 import { Icon, ShellIcon, colorFor, initials } from "./ui";
 import { Brand } from "./auth";
@@ -65,6 +66,13 @@ function Sidebar() {
               <Icon name="alert" size={13} /><span>Conexão sem HTTPS</span>
             </div>
           </Show>
+        </Show>
+        <Show when={updateStatus()?.available}>
+          {(u) => (
+            <button class="sync-line link-like update-line" onClick={installUpdate} title="Instalar a nova versão do Vessel">
+              <Icon name="download" size={13} /><span>Versão {u().version} disponível</span>
+            </button>
+          )}
         </Show>
         <div class="account-chip">
           <div class="avatar" style={{ width: "30px", height: "30px", "border-radius": "8px", display: "grid", "place-items": "center",
@@ -218,6 +226,9 @@ export function Workspace() {
     };
     document.addEventListener("keydown", onKey, true);
     document.addEventListener("mousemove", touch);
+    // Updates: shortly after opening, then once a day.
+    const firstCheck = setTimeout(() => checkForUpdate(), 15_000);
+    const dailyCheck = setInterval(() => checkForUpdate(), 24 * 3600_000);
     const timer = setInterval(async () => {
       const minutes = settings()?.lock_after_minutes ?? 15;
       if (minutes > 0 && Date.now() - last > minutes * 60_000) setStatus(await api.lock());
@@ -226,6 +237,8 @@ export function Workspace() {
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("mousemove", touch);
       clearInterval(timer);
+      clearTimeout(firstCheck);
+      clearInterval(dailyCheck);
     });
   });
 

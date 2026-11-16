@@ -412,6 +412,8 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius
   .nav-item span, .brand > div:not(.brand-logo), .account-chip .meta { display: none; }
 }
 .link-like { background: none; border: 0; cursor: pointer; text-align: left; font: inherit; }
+.update-line { color: var(--structure); font-weight: 600; }
+.update-line .icon { color: var(--signal); }
 .link-like:hover span:last-child { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 
 /* ================================================================== motion

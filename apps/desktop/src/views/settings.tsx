@@ -1,6 +1,7 @@
 import { For, Show, createResource, createSignal } from "solid-js";
 import { api, type AdminUser, type Settings } from "../api";
-import { attempt, copy, refreshData, settings, settingsItem, status } from "../store";
+import { attempt, checkForUpdate, copy, refreshData, settings, settingsItem, status, updateStatus } from "../store";
+import { installUpdate } from "../update";
 import { Badge, Button, Field, Icon, Modal, confirmAction, timeAgo } from "../ui";
 import { ItemSelect } from "./common";
 import { Account } from "./account";
@@ -20,7 +21,26 @@ export function SettingsView() {
       <Show when={!status()?.local}><Devices /></Show>
       <Conflicts />
       <Show when={status()?.is_server_admin}><ServerAdmin /></Show>
+      <Updates />
     </>
+  );
+}
+
+function Updates() {
+  const [checking, setChecking] = createSignal(false);
+  const check = async () => { setChecking(true); await checkForUpdate(true); setChecking(false); };
+  return (
+    <div class="panel">
+      <h3>Atualizações</h3>
+      <p>O Vessel procura versões novas ao abrir e uma vez por dia, e só instala quando você confirma. Cada atualização é assinada pelo projeto; uma assinatura que não confere é recusada.</p>
+      <Show when={updateStatus()?.current}><p class="sub">Versão instalada: {updateStatus()!.current}</p></Show>
+      <div style={{ display: "flex", gap: "8px", "margin-top": "8px" }}>
+        <Button icon="sync" onClick={check} disabled={checking()}>{checking() ? "Procurando…" : "Procurar atualizações"}</Button>
+        <Show when={updateStatus()?.available}>
+          {(u) => <Button variant="primary" icon="download" onClick={installUpdate}>Instalar a versão {u().version}</Button>}
+        </Show>
+      </div>
+    </div>
   );
 }
 

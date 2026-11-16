@@ -158,3 +158,13 @@ A redação de segredos, a recusa de credenciais e as regras de permissão têm 
 1. Instale, abra, feche e reabra. *Esperado:* os dados continuam.
 2. Instale por cima com o mesmo instalador. *Esperado:* os dados continuam.
 3. Desinstale. Os dados ficam em `%APPDATA%\dev.vessel.desktop`; apague a pasta se quiser zerar.
+
+## 9. Atualização
+
+Com uma versão instalada e um release mais novo publicado:
+
+1. Abra o app e espere uns 15 segundos. *Esperado:* o rodapé do menu mostra "Versão X disponível".
+2. **Configurações → Atualizações → Procurar atualizações.** *Esperado:* a mesma versão, com o botão para instalar.
+3. Instale. *Esperado:* o app pede confirmação, avisa que terminais serão encerrados, baixa, instala e reabre já na versão nova, com os dados intactos.
+
+As recusas (assinatura de outro arquivo, de outra versão, sem versão ou inválida) foram testadas contra um feed local com uma chave descartável. Para repetir, compile com `npx tauri build --debug --no-bundle` e rode o app com `VESSEL_UPDATE_ENDPOINT` apontando para o seu feed; essa variável só vale em builds de depuração.

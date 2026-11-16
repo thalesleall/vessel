@@ -198,6 +198,9 @@ export interface SessionInfo {
 export interface DetectedShell { label: string; shell: Shell; program: string }
 export interface ForwardStatus { rule_id: Uuid; label: string; description: string; running: boolean; error: string | null }
 
+export interface AvailableUpdate { version: string; notes: string | null; date: string | null }
+export interface UpdateStatus { current: string; available: AvailableUpdate | null }
+
 export interface McpInfo {
   enabled: boolean;
   running: boolean;
@@ -301,6 +304,8 @@ export const api = {
     invoke<McpInfo>("mcp_configure", { enabled, port, allowTerminalInput, allowWrites }),
   mcpRegenerateToken: () => invoke<McpInfo>("mcp_regenerate_token"),
   mcpActivity: () => invoke<Activity[]>("mcp_activity"),
+  updateCheck: () => invoke<UpdateStatus>("update_check"),
+  updateInstall: (version: string) => invoke<void>("update_install", { version }),
 };
 
 export function on<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {

@@ -24,6 +24,17 @@ jobs:
           $tag = "${{ github.ref_name }}".TrimStart("v")
           if ($app -ne $tag) { throw "A tag v$tag não confere com a versão do app ($app) em tauri.conf.json" }
 
+      - name: Chave do atualizador
+        # Cada versão é assinada com a chave do atualizador (independente do certificado do
+        # Windows). Sem ela, os apps instalados não aceitariam esta versão.
+        shell: pwsh
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if (-not $env:KEY) { throw "Falta o segredo TAURI_SIGNING_PRIVATE_KEY (veja docs/OPERATING.md, seção Atualizações)" }
+          $pub = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).plugins.updater.pubkey
+          if ($pub -notmatch ^[A-Za-z0-9+/=]40) { throw "A chave pública do atualizador não está em tauri.conf.json (plugins.updater.pubkey)" }
+
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
@@ -41,6 +52,9 @@ jobs:
 
       - name: Instalador
         working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           npm ci
           npx tauri build --config src-tauri/tauri.release.json
@@ -54,6 +68,16 @@ jobs:
           $installer = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           Copy-Item $installer.FullName "out/Vessel_${version}_x64-setup.exe"
           Copy-Item target/release/vessel-mcp.exe "out/vessel-mcp_${version}_x64.exe"
+          # Feed do atualizador: a versão nova, onde baixá-la e a assinatura do instalador.
+          $sig = (Get-Content "$($installer.FullName).sig" -Raw).Trim()
+          $url = "https://github.com/${{ github.repository }}/releases/download/v$version/Vessel_${version}_x64-setup.exe"
+          $feed = [ordered]@{
+            version = $version
+            notes = "Novidades: https://github.com/${{ github.repository }}/releases/tag/v$version"
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{ "windows-x86_64" = [ordered]@{ signature = $sig; url = $url } }
+          }
+          [IO.File]::WriteAllText("$PWD/out/latest.json", ($feed | ConvertTo-Json -Depth 5))
           # Licenças dos pacotes de terceiros incluídos nos binários.
           Copy-Item THIRD-PARTY-NOTICES.md out/THIRD-PARTY-NOTICES.md
           # LF line endings, so `sha256sum -c SHA256SUMS.txt` works as is.
@@ -84,6 +108,8 @@ jobs:
             3. Abra o **Vessel** pelo menu Iniciar e escolha **Só neste computador** ou **Sincronizar com um servidor**.
 
             O instalador ainda não é assinado digitalmente. Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**. Para conferir o arquivo, compare o SHA-256 com `SHA256SUMS.txt`.
+
+            Quem já tem o Vessel 0.1.2 ou mais novo recebe o aviso desta versão no próprio app.
 
             A ponte MCP para agentes de IA (`vessel-mcp.exe`) já vem no instalador; o arquivo avulso abaixo é para quem quiser usá-la em outro lugar.
 

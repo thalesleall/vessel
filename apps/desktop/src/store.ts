@@ -1,6 +1,6 @@
 import { createMemo, createSignal } from "solid-js";
 import { transition } from "./motion";
-import { api, errorMessage, on, type Item, type Kind, type SessionInfo, type Settings, type Status, type SyncReport, type VaultView } from "./api";
+import { api, errorMessage, on, type Item, type Kind, type SessionInfo, type Settings, type Status, type SyncReport, type UpdateStatus, type VaultView } from "./api";
 
 // ---------------------------------------------------------------------------------------------
 // App-wide state
@@ -104,6 +104,23 @@ export function wireEvents() {
     await refreshStatus();
   });
   on("terminal://changed", () => refreshSessions());
+}
+
+// ---------------------------------------------------------------------------------------------
+// App updates
+// ---------------------------------------------------------------------------------------------
+
+export const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus | null>(null);
+
+/** Asks the release feed for a newer version. Quiet unless `announce` (a manual check). */
+export async function checkForUpdate(announce = false): Promise<void> {
+  try {
+    const s = await api.updateCheck();
+    setUpdateStatus(s);
+    if (announce) toast(s.available ? `Versão ${s.available.version} disponível` : "Você já está na versão mais recente", "info");
+  } catch (e) {
+    if (announce) toast(errorMessage(e), "error");
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

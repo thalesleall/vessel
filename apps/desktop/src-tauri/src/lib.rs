@@ -12,6 +12,7 @@ mod ops;
 mod ssh;
 mod state;
 mod terminal;
+mod update;
 
 use std::sync::{Arc, Mutex};
 
@@ -30,6 +31,7 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -112,6 +114,8 @@ pub fn run() {
             commands::mcp_configure,
             commands::mcp_regenerate_token,
             commands::mcp_activity,
+            commands::update_check,
+            commands::update_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vessel");

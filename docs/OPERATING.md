@@ -79,4 +79,37 @@ docker compose exec -e VESSEL_BACKUP_PASSPHRASE agent vessel-agent restore /data
 
 - **Imagens:** as imagens base estão fixadas por digest (`apps/agent/Dockerfile`, `deploy/docker-compose.yml`, `deploy/dev/sshd/Dockerfile`). Para atualizar, rode `docker buildx imagetools inspect <imagem>` e troque o digest num commit próprio.
 - **Instalador do Windows:** precisa ser assinado com um certificado de assinatura de código (EV ou OV). No `apps/desktop/src-tauri/tauri.conf.json`, preencha `bundle.windows.certificateThumbprint` (ou use `signCommand`) na máquina de build que tem o certificado. Sem assinatura, o SmartScreen avisa os usuários e não há como provar a origem do instalador.
+- **Atualizações do app:** cada versão é assinada com a chave do atualizador, separada do certificado do Windows (veja a seção abaixo). Sem os segredos dessa chave no GitHub o workflow de release para.
 - **Antes de publicar:** `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `npx tsc --noEmit` em `apps/desktop`, e os testes do laboratório SSH (`docs/TESTING.md`).
+
+## Atualizações do app
+
+O app procura versões novas nos releases do GitHub (`latest.json`) ao abrir e uma vez por dia, mostra a versão e só instala quando a pessoa confirma. Cada instalador é assinado com a **chave do atualizador** do projeto. O app traz a chave pública e recusa qualquer atualização cuja assinatura não confira, inclusive a de um instalador antigo e legítimo anunciado como versão nova: a assinatura carrega o número da versão (`requireSignedVersion`).
+
+Essa chave não tem relação com o certificado do Windows: é grátis e gerada por você.
+
+### Gerar o par de chaves (uma vez)
+
+Em `apps/desktop`, rode:
+
+```bash
+npx tauri signer generate -w ~/.tauri/vessel-updater.key
+```
+
+O comando pede uma senha para a chave e grava dois arquivos: `vessel-updater.key` (privada) e `vessel-updater.key.pub` (pública).
+
+1. **Chave pública:** copie o conteúdo de `vessel-updater.key.pub` para `plugins.updater.pubkey` em `apps/desktop/src-tauri/tauri.conf.json` e faça um commit. Ela não é segredo.
+2. **Chave privada:** em **GitHub → Settings → Secrets and variables → Actions**, crie dois segredos:
+   - `TAURI_SIGNING_PRIVATE_KEY`: o conteúdo inteiro de `vessel-updater.key`;
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: a senha escolhida.
+3. **Backup:** guarde a chave privada e a senha fora do computador e fora do GitHub (por exemplo num gerenciador de senhas e num pendrive). **Sem ela, os apps já instalados nunca mais aceitam uma atualização**, e cada pessoa teria de reinstalar à mão.
+
+Nunca coloque a chave privada no repositório nem a envie em mensagens.
+
+### Como sai cada versão
+
+O workflow `Release` confere que a chave pública está no app e que os segredos existem, assina o instalador e publica `latest.json` com a versão, o link do instalador e a assinatura. Os apps a partir da 0.1.2 veem a versão nova sozinhos; quem está numa versão anterior atualiza à mão uma última vez.
+
+### Se a chave vazar
+
+Gere um par novo, troque a chave pública no app e publique uma versão assinada ainda com a chave antiga: ela leva a chave nova aos apps instalados. Depois disso, troque os segredos do GitHub pelos da chave nova.

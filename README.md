@@ -39,6 +39,7 @@ Você escolhe onde os dados ficam: só no seu computador, ou num servidor de sin
 - **Sincronização:** em tempo real entre computadores. Conflitos de edição são mesclados campo a campo.
 - **Migração sem perda:** dá para começar só no computador e conectar um servidor depois, ou o contrário. Antes de migrar, o app faz um backup criptografado.
 - **Temas claro e escuro**, bloqueio automático por inatividade e chave de recuperação para quando esquecer a senha.
+- **Atualizações assinadas:** o app avisa quando há versão nova e só instala com a sua confirmação.
 
 <table>
   <tr>
@@ -202,7 +203,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-O workflow `Release` compila no Windows e publica o release no GitHub com o instalador (com a ponte MCP dentro), a ponte avulsa, as licenças de terceiros e o `SHA256SUMS.txt`. A cada push, o workflow `CI` roda os testes, o clippy e a checagem do frontend.
+O workflow `Release` compila no Windows e publica o release no GitHub com o instalador (com a ponte MCP dentro), a ponte avulsa, as licenças de terceiros, o `SHA256SUMS.txt` e o `latest.json` que os apps instalados consultam para se atualizar. Ele precisa da chave do atualizador nos segredos do GitHub: veja [docs/OPERATING.md](docs/OPERATING.md#atualizações-do-app). A cada push, o workflow `CI` roda os testes, o clippy e a checagem do frontend.
 
 ### Estrutura
 

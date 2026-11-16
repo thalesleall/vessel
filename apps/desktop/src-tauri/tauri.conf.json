@@ -51,5 +51,17 @@
       "../../../LICENSE-MIT": "LICENSE-MIT",
       "../../../LICENSE-APACHE": "LICENSE-APACHE"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "COLE_AQUI_A_CHAVE_PUBLICA_DO_ATUALIZADOR",
+      "endpoints": [
+        "https://github.com/thalesleall/vessel/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
