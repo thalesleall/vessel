@@ -179,6 +179,14 @@ fn migrate(conn: &Connection) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Deletes rows that can no longer be used: sessions whose refresh token expired and invites
+/// past their date. Without it both tables only grow. Returns how many rows went.
+pub fn purge_expired(conn: &Connection) -> rusqlite::Result<usize> {
+    let t = now();
+    Ok(conn.execute("DELETE FROM sessions WHERE refresh_expires < ?1", [t])?
+        + conn.execute("DELETE FROM invites WHERE expires_at < ?1", [t])?)
+}
+
 pub fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -378,4 +386,46 @@ pub fn insert_grant(
         params![vault.as_bytes().as_slice(), grant.key_version, grant.recipient_id.as_slice(), serde_json::to_string(grant)?],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expired_sessions_and_invites_are_purged() {
+        let conn = open(std::path::Path::new(":memory:")).unwrap();
+        let t = now();
+        conn.execute(
+            "INSERT INTO users (id, email, password_file, kdf, public_kem, public_sign, wrapped_ak_master,
+                wrapped_ak_recovery, encrypted_private_keys, recovery_auth_hash, created_at)
+             VALUES (x'01', 'a@example.com', x'', '{}', x'', x'', x'', x'', x'', x'', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO devices (id, user_id, name, public_key, created_at, last_seen_at) VALUES (x'02', x'01', 'pc', x'', 0, 0)",
+            [],
+        )
+        .unwrap();
+        for (id, expires) in [(1_u8, t - 10), (2, t + 3600)] {
+            conn.execute(
+                "INSERT INTO sessions (id, device_id, user_id, access_hash, access_expires, refresh_hash, refresh_expires)
+                 VALUES (?1, x'02', x'01', ?1, 0, ?1, ?2)",
+                params![vec![id], expires],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO invites (token_hash, role, created_by, expires_at) VALUES (?1, 1, x'01', ?2)",
+                params![vec![id], expires],
+            )
+            .unwrap();
+        }
+        assert_eq!(purge_expired(&conn).unwrap(), 2);
+        let left = |table: &str| -> i64 {
+            conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0)).unwrap()
+        };
+        assert_eq!((left("sessions"), left("invites")), (1, 1));
+        assert_eq!(purge_expired(&conn).unwrap(), 0);
+    }
 }

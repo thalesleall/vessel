@@ -21,6 +21,7 @@ use tokio::net::TcpListener;
 /// Builds the application and serves it until the process is stopped.
 pub async fn serve(config: Config, listener: TcpListener) -> anyhow::Result<()> {
     let state = state::AppState::open(config)?;
+    tokio::spawn(housekeeping(state.clone()));
     let app = routes::router(state);
     axum::serve(
         listener,
@@ -28,6 +29,19 @@ pub async fn serve(config: Config, listener: TcpListener) -> anyhow::Result<()> 
     )
     .await?;
     Ok(())
+}
+
+/// Once at start and then every hour: drops expired sessions and invites.
+async fn housekeeping(state: state::AppState) {
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
+    loop {
+        tick.tick().await;
+        match state.db(|conn| Ok(db::purge_expired(conn)?)).await {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(rows = n, "expired sessions and invites removed"),
+            Err(e) => tracing::warn!("housekeeping failed: {e:?}"),
+        }
+    }
 }
 
 /// Starts an agent on an ephemeral port in the background. Used by tests and local development.
