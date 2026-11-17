@@ -43,6 +43,7 @@ const paths: Record<string, string> = {
   logout: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10",
   file: "M6 3h8l4 4v14H6zM14 3v4h4",
   "chevron-left": "M15 6l-6 6 6 6",
+  "chevron-down": "M6 9l6 6 6-6",
   laptop: "M5 5h14v10H5zM2 19h20",
   star: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z",
   cloud: "M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z",

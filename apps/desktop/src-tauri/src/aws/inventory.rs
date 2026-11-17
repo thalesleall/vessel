@@ -113,6 +113,8 @@ pub struct Job {
     /// Region for the first call (DescribeRegions).
     pub home_region: String,
     pub regions: Option<Vec<String>>,
+    /// Other profiles that reach the same account, tried in order when this one cannot sign in.
+    pub alternates: Vec<String>,
 }
 
 /// Progress for the bar: "conta 3/8 · região 12/17".
@@ -155,7 +157,9 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            concurrency: 4,
+            // AWS limits API calls per account and region, and the limiter never runs two at once
+            // for the same account and region: across many accounts, more can run together.
+            concurrency: 64,
             max_attempts: 6,
             initial_backoff: Duration::from_millis(500),
             call_timeout: Duration::from_secs(60),
@@ -390,17 +394,25 @@ async fn map_profile<C: CredentialSource, S: Sink>(ctx: &Ctx<C, S>, job: Job) ->
         node
     };
 
-    // Signing in through the CLI is a query too (it may assume a role).
-    let creds = {
-        let _slot = ctx
-            .limiter
-            .acquire(&format!("profile:{}", job.profile))
-            .await;
-        match ctx.cancel.run(ctx.creds.credentials(&job.profile)).await {
+    // The account's own profile first, then the others that reach it. The credential source
+    // limits how many CLI processes run at once.
+    let mut first_error = None;
+    let mut creds = None;
+    for name in std::iter::once(&job.profile).chain(&job.alternates) {
+        match ctx.cancel.run(ctx.creds.credentials(name)).await {
             None => return fail(node, cancelled()),
-            Some(Err(e)) => return fail(node, e),
-            Some(Ok(c)) => c,
+            Some(Ok(c)) => {
+                node.profile = name.clone();
+                creds = Some(c);
+                break;
+            }
+            Some(Err(e)) => {
+                first_error.get_or_insert(e);
+            }
         }
+    }
+    let Some(creds) = creds else {
+        return fail(node, first_error.unwrap_or_else(cancelled));
     };
     let account_key = job
         .account
@@ -445,7 +457,7 @@ async fn map_profile<C: CredentialSource, S: Sink>(ctx: &Ctx<C, S>, job: Job) ->
         .collect();
     let mut results = Vec::new();
     while let Some(r) = pending.next().await {
-        ctx.sink.region(&job.profile, &r);
+        ctx.sink.region(&node.profile, &r);
         ctx.bump(|p| p.regions_done += 1);
         results.push(r);
     }
@@ -471,9 +483,28 @@ async fn map_region<C: CredentialSource, S: Sink>(
     let result = ctx
         .cancel
         .run(async {
-            let _slot = ctx.limiter.acquire(&key).await;
-            let ssm_status = list_ssm(&ctx.ssm(creds, &region)).await?;
-            let instances = list_ec2(&ctx.ec2(creds, &region), &ssm_status).await?;
+            // Session Manager and EC2 have separate limits: both run at once, each one at a
+            // time per account and region.
+            let ssm_key = format!("{key}:ssm");
+            let ec2_key = format!("{key}:ec2");
+            let (ssm_status, mut instances) = futures_util::try_join!(
+                async {
+                    let _slot = ctx.limiter.acquire(&ssm_key).await;
+                    list_ssm(&ctx.ssm(creds, &region)).await
+                },
+                async {
+                    let _slot = ctx.limiter.acquire(&ec2_key).await;
+                    list_ec2(&ctx.ec2(creds, &region)).await
+                },
+            )?;
+            for i in &mut instances {
+                if let Some(info) = ssm_status.get(&i.id) {
+                    i.ssm = info.status;
+                    if !info.platform.is_empty() {
+                        i.platform = info.platform.clone();
+                    }
+                }
+            }
             Ok::<_, AwsError>((instances, ssm_status))
         })
         .await;
@@ -553,10 +584,8 @@ async fn list_ssm(client: &ssm::Client) -> Result<BTreeMap<String, SsmInfo>, Aws
     Ok(out)
 }
 
-async fn list_ec2(
-    client: &ec2::Client,
-    ssm_status: &BTreeMap<String, SsmInfo>,
-) -> Result<Vec<Instance>, AwsError> {
+/// EC2 instances, all "unmanaged" until the Session Manager list says otherwise.
+async fn list_ec2(client: &ec2::Client) -> Result<Vec<Instance>, AwsError> {
     let mut out = Vec::new();
     let mut pages = client
         .describe_instances()
@@ -583,17 +612,12 @@ async fn list_ec2(
                     .and_then(|t| t.value())
                     .unwrap_or("")
                     .to_string();
-                let info = ssm_status.get(id);
                 out.push(Instance {
                     id: id.to_string(),
                     name,
                     state,
-                    ssm: info.map(|s| s.status).unwrap_or(SsmStatus::Unmanaged),
-                    platform: info
-                        .map(|s| s.platform.clone())
-                        .filter(|p| !p.is_empty())
-                        .or_else(|| i.platform_details().map(str::to_string))
-                        .unwrap_or_default(),
+                    ssm: SsmStatus::Unmanaged,
+                    platform: i.platform_details().unwrap_or("").to_string(),
                     private_ip: i.private_ip_address().unwrap_or("").to_string(),
                 });
             }

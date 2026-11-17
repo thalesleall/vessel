@@ -28,9 +28,23 @@ function wire() {
   if (wired) return;
   wired = true;
   onEvent<AwsProgress>("aws://progress", (p) => setProgress(p));
-  onEvent<AwsProfileNode>("aws://profile", (node) => setLive((inv) => upsertProfile(inv, node)));
-  onEvent<{ profile: string; node: AwsRegionNode }>("aws://region", ({ profile, node }) => setLive((inv) => upsertRegion(inv, profile, node)));
+  // Hundreds of accounts send thousands of region results: they reach the screen in batches.
+  let queue: ((inv: AwsInventory | null) => AwsInventory)[] = [];
+  let timer: number | undefined;
+  const flush = () => {
+    timer = undefined;
+    const q = queue;
+    queue = [];
+    if (q.length) setLive((inv) => q.reduce<AwsInventory | null>((acc, f) => f(acc), inv));
+  };
+  const push = (f: (inv: AwsInventory | null) => AwsInventory) => {
+    queue.push(f);
+    timer ??= window.setTimeout(flush, 300);
+  };
+  onEvent<AwsProfileNode>("aws://profile", (node) => push((inv) => upsertProfile(inv, node)));
+  onEvent<{ profile: string; node: AwsRegionNode }>("aws://region", ({ profile, node }) => push((inv) => upsertRegion(inv, profile, node)));
   onEvent<{ partial: boolean; count: number }>("aws://done", (d) => {
+    flush();
     setMapping(false);
     setProgress(null);
     toast(d.partial ? `Mapeamento cancelado: ${d.count} instâncias guardadas até aqui.` : `Mapeamento concluído: ${d.count} instâncias.`, d.partial ? "info" : "success");
@@ -108,6 +122,19 @@ interface Problem { key: string; client: string; profile: string; region: string
 
 const accountKey = (account: string | null, profile: string) => account ?? `profile:${profile}`;
 
+/** The shared start of several profile names ("acme-prod" for "acme-prod-admin" and
+ * "acme-prod-readonly"), or null when they share too little to name the client. */
+function commonName(names: string[]): string | null {
+  if (names.length < 2) return null;
+  let prefix = names[0];
+  for (const n of names.slice(1)) while (!n.startsWith(prefix)) prefix = prefix.slice(0, -1);
+  // Cut at a separator, so "acme-prod-a" from "acme-prod-admin"/"acme-prod-audit" stays "acme-prod".
+  const whole = names.every((n) => n.length === prefix.length || /[-_./ ]/.test(n[prefix.length]));
+  if (!whole) prefix = prefix.slice(0, Math.max(...[..."-_./ "].map((c) => prefix.lastIndexOf(c))) + 1);
+  prefix = prefix.replace(/[-_./ ]+$/, "");
+  return prefix.length >= 3 ? prefix : null;
+}
+
 function buildClients(inv: AwsInventory | null, config: AwsProfile[], settings: AwsSettings) {
   type Acc = { key: string; account: string | null; profiles: Set<string>; seen: Map<string, Target[]>; problems: Omit<Problem, "client">[] };
   const byKey = new Map<string, Acc>();
@@ -136,9 +163,11 @@ function buildClients(inv: AwsInventory | null, config: AwsProfile[], settings: 
   let hidden = 0;
   for (const acc of byKey.values()) {
     const prefs = settings.clients[acc.key];
-    const profiles = [...acc.profiles].sort();
-    const access = prefs?.profile && profiles.includes(prefs.profile) ? prefs.profile : profiles[0] ?? acc.problems[0]?.profile ?? "";
-    const name = prefs?.name || access || acc.key;
+    // Every profile of the account, mapped or not: the mapping signs in with one of them.
+    const profiles = [...new Set([...acc.profiles, ...(acc.account ? config.filter((p) => p.account === acc.account && !p.problem).map((p) => p.name) : [])])].sort();
+    const mapped = [...acc.profiles];
+    const access = prefs?.profile && profiles.includes(prefs.profile) ? prefs.profile : mapped.sort()[0] ?? profiles[0] ?? acc.problems[0]?.profile ?? "";
+    const name = prefs?.name || commonName(profiles) || access || acc.key;
     for (const p of acc.problems) problems.push({ ...p, client: name });
     const rows: Row[] = [...acc.seen.values()]
       .map((candidates) => ({ ...(candidates.find((c) => c.profile === access) ?? candidates[0]), client: name }))
@@ -150,12 +179,14 @@ function buildClients(inv: AwsInventory | null, config: AwsProfile[], settings: 
   return { clients, problems, hidden };
 }
 
-const COLLAPSED_KEY = "vessel.aws.collapsed";
-function loadCollapsed(): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]")); } catch { return new Set(); }
+/** Clients start open when there are few, closed when there are many; a click is remembered. */
+const OPEN_KEY = "vessel.aws.open";
+const OPEN_BY_DEFAULT_UP_TO = 6;
+function loadOpen(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? "{}") ?? {}; } catch { return {}; }
 }
-function saveCollapsed(s: Set<string>) {
-  try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...s])); } catch { /* per-viewer convenience only */ }
+function saveOpen(o: Record<string, boolean>) {
+  try { localStorage.setItem(OPEN_KEY, JSON.stringify(o)); } catch { /* per-viewer convenience only */ }
 }
 
 export function AwsView() {
@@ -179,7 +210,7 @@ export function AwsView() {
   const [editing, setEditing] = createSignal<Client | null>(null);
   const [regionsOf, setRegionsOf] = createSignal<string | null>(null);
   const [showProblems, setShowProblems] = createSignal(false);
-  const [collapsed, setCollapsed] = createSignal(loadCollapsed());
+  const [opened, setOpened] = createSignal(loadOpen());
 
   const settings = (): AwsSettings => ({ master: null, regions: {}, favorites: [], clients: {}, ...overview()?.settings });
   const master = () => overview()?.master ?? null;
@@ -226,10 +257,11 @@ export function AwsView() {
   const mapAll = async () => {
     const m = master();
     if (!m) return invalid("Perfil mestre", "Escolha o perfil mestre (ou todos os perfis) antes de mapear.");
-    const count = m === AWS_ALL ? profiles().length : profiles().filter((p) => p.master === m).length;
+    const family = m === AWS_ALL ? profiles() : profiles().filter((p) => p.master === m);
+    const accounts = new Set(family.map((p) => p.account ?? `profile:${p.name}`)).size;
     if (!(await confirmAction({
       title: "Mapear todas as contas?",
-      message: `Vai consultar todas as regiões habilitadas de ${count} perfil(is), uma conta por vez em cada região. Pode levar alguns minutos, e você pode cancelar a qualquer momento. As credenciais temporárias ficam só na memória durante o mapeamento.`,
+      message: `Vai consultar as regiões habilitadas de ${accounts} ${accounts === 1 ? "conta" : "contas"} (${family.length} ${family.length === 1 ? "perfil" : "perfis"}; perfis da mesma conta contam uma vez). Você pode cancelar a qualquer momento. As credenciais temporárias ficam só na memória durante o mapeamento.`,
       confirm: "Mapear",
       danger: false,
     }))) return;
@@ -285,11 +317,17 @@ export function AwsView() {
     return settings().favorites.flatMap((f) => rows.filter((r) => r.instance.id === f.id && r.region === f.region).slice(0, 1));
   });
 
-  const toggleCollapsed = (key: string) => {
-    const next = new Set(collapsed());
-    if (next.has(key)) next.delete(key); else next.add(key);
-    setCollapsed(next);
-    saveCollapsed(next);
+  const isOpen = (key: string) => opened()[key] ?? built().clients.length <= OPEN_BY_DEFAULT_UP_TO;
+  const setAllOpen = (open: boolean) => {
+    const next = { ...opened() };
+    for (const c of built().clients) next[c.key] = open;
+    setOpened(next);
+    saveOpen(next);
+  };
+  const toggleOpen = (key: string) => {
+    const next = { ...opened(), [key]: !isOpen(key) };
+    setOpened(next);
+    saveOpen(next);
   };
 
   const openShell = async (t: Target) => {
@@ -420,6 +458,12 @@ export function AwsView() {
                   <span><b>{totals().clients}</b> {totals().clients === 1 ? "cliente" : "clientes"}</span>
                   <span><b>{totals().instances}</b> {totals().instances === 1 ? "instância" : "instâncias"}</span>
                   <span><span class="aws-dot online" /><b>{totals().online}</b> online no SSM</span>
+                  <Show when={built().clients.length > 1}>
+                    <span class="aws-summary-tools">
+                      <button class="link-like" onClick={() => setAllOpen(true)}>Expandir todos</button>
+                      <button class="link-like" onClick={() => setAllOpen(false)}>Recolher todos</button>
+                    </span>
+                  </Show>
                 </div>
 
                 <Show when={favorites().length}>
@@ -454,7 +498,7 @@ export function AwsView() {
                 <Show when={shown().length} fallback={<p class="aws-empty-filter">Nenhuma instância com esses filtros.</p>}>
                   <For each={shown()}>{(x) => (
                     <ClientCard client={x.client} rows={x.rows} total={x.client.rows.length} overview={o()} busy={isMapping()}
-                      open={filtering() || !collapsed().has(x.client.key)} onToggle={() => toggleCollapsed(x.client.key)}
+                      open={(filtering() && !!query()) || isOpen(x.client.key)} onToggle={() => toggleOpen(x.client.key)}
                       onEdit={() => setEditing(x.client)} onRemap={() => void start({ profile: x.client.access })}
                       onRegion={(r) => setRegionFilter(r)} {...actions} />
                   )}</For>
@@ -571,7 +615,7 @@ function ClientCard(props: RowActions & {
         <div class="aws-client-tools">
           <button class="icon-btn" aria-label={`Editar o cliente ${props.client.name}`} title="Nome, perfil de acesso e regiões" onClick={props.onEdit}><Icon name="edit" size={15} /></button>
           <button class="icon-btn" aria-label={`Mapear ${props.client.name} de novo`} title="Mapear este cliente de novo" disabled={props.busy} onClick={props.onRemap}><Icon name="sync" size={15} /></button>
-          <button class="icon-btn aws-chevron" classList={{ open: props.open }} aria-label={props.open ? "Recolher" : "Expandir"} onClick={props.onToggle}><Icon name="arrow-down" size={15} /></button>
+          <button class="icon-btn aws-chevron" classList={{ open: props.open }} aria-label={props.open ? "Recolher" : "Expandir"} onClick={props.onToggle}><Icon name="chevron-down" size={15} /></button>
         </div>
       </div>
       <Show when={props.open}>

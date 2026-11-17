@@ -4,6 +4,7 @@
 
 pub mod cli;
 pub mod config;
+pub mod creds;
 pub mod inventory;
 pub mod snippets;
 
@@ -21,7 +22,7 @@ use vessel_client::model::{Entity, Shell, TerminalProfile};
 use crate::error::{CmdError, CmdResult};
 use crate::state::AppState;
 use crate::terminal::{SessionInfo, SessionKind};
-use cli::{AwsError, Credentials, Tools};
+use cli::{AwsError, Tools};
 use config::Profile;
 use inventory::{Cancel, Inventory, Job, Limits, ProfileNode, Progress, RegionNode};
 
@@ -316,25 +317,6 @@ fn open_cli_tab(
     Ok(info)
 }
 
-/// The CLI as credential source, with each profile's region.
-struct CliCreds(Tools, BTreeMap<String, String>);
-
-impl inventory::CredentialSource for CliCreds {
-    fn credentials(
-        &self,
-        profile: &str,
-    ) -> impl std::future::Future<Output = Result<Credentials, AwsError>> + Send {
-        let tools = self.0.clone();
-        let region = self
-            .1
-            .get(profile)
-            .cloned()
-            .unwrap_or_else(|| "us-east-1".into());
-        let profile = profile.to_string();
-        async move { cli::export_credentials(&tools, &profile, &region).await }
-    }
-}
-
 /// A profile's region: its own, else its master's, else us-east-1.
 fn home_region(profiles: &[Profile], p: &Profile) -> String {
     p.region
@@ -367,29 +349,48 @@ impl inventory::Sink for Events {
     }
 }
 
+/// One job per account: profiles that reach the same account (an admin and a read-only role,
+/// say) would map the same instances twice. The client's chosen profile goes first, the others
+/// stay as alternates in case it cannot sign in. Profiles whose account is unknown map alone.
 fn jobs_for(
     profiles: &[Profile],
     settings: &AwsSettings,
     names: &[String],
     only_region: Option<&str>,
 ) -> Vec<Job> {
-    names
+    let mut groups: BTreeMap<String, Vec<&Profile>> = BTreeMap::new();
+    for p in names
         .iter()
         .filter_map(|n| profiles.iter().find(|p| &p.name == n))
         .filter(|p| p.problem.is_none())
-        .map(|p| Job {
-            profile: p.name.clone(),
-            account: p.account.clone(),
-            role_arn: p.role_arn.clone(),
-            home_region: home_region(profiles, p),
-            regions: match only_region {
-                Some(r) => Some(vec![r.to_string()]),
-                None => settings
-                    .regions
-                    .get(&p.name)
-                    .cloned()
-                    .filter(|r| !r.is_empty()),
-            },
+    {
+        let key = p
+            .account
+            .clone()
+            .unwrap_or_else(|| format!("profile:{}", p.name));
+        groups.entry(key).or_default().push(p);
+    }
+    groups
+        .into_iter()
+        .map(|(key, mut group)| {
+            let chosen = settings.clients.get(&key).and_then(|c| c.profile.clone());
+            group.sort_by_key(|p| (Some(&p.name) != chosen.as_ref(), p.name.clone()));
+            let p = group[0];
+            Job {
+                profile: p.name.clone(),
+                account: p.account.clone(),
+                role_arn: p.role_arn.clone(),
+                home_region: home_region(profiles, p),
+                regions: match only_region {
+                    Some(r) => Some(vec![r.to_string()]),
+                    None => settings
+                        .regions
+                        .get(&p.name)
+                        .cloned()
+                        .filter(|r| !r.is_empty()),
+                },
+                alternates: group[1..].iter().map(|x| x.name.clone()).collect(),
+            }
         })
         .collect()
 }
@@ -437,9 +438,10 @@ pub async fn aws_map(
         (None, None) => return Err(CmdError::new("invalid", "Escolha o perfil mestre.")),
     };
     let jobs = jobs_for(&profiles, &settings, &names, region.as_deref());
-    let regions: BTreeMap<String, String> = jobs
+    // Every profile's region, sources included: they sign in too.
+    let regions: BTreeMap<String, String> = profiles
         .iter()
-        .map(|j| (j.profile.clone(), j.home_region.clone()))
+        .map(|p| (p.name.clone(), home_region(&profiles, p)))
         .collect();
     if jobs.is_empty() {
         return Err(CmdError::new(
@@ -456,17 +458,24 @@ pub async fn aws_map(
         *m = Some(c.clone());
         c
     };
+    // The same endpoint override the AWS CLI honors (a local emulator, a proxy, tests).
+    let endpoint = std::env::var("AWS_ENDPOINT_URL")
+        .ok()
+        .filter(|u| u.starts_with("http"));
     let state = (*state).clone();
     tokio::spawn(async move {
         let result = inventory::map(
             jobs,
-            CliCreds(tools, regions),
+            creds::Resolver::new(
+                tools,
+                &profiles,
+                regions,
+                state.aws.http(),
+                endpoint.clone(),
+            ),
             Events(state.app.clone()),
             Limits {
-                // The same endpoint override the AWS CLI honors (a local emulator, a proxy, tests).
-                endpoint: std::env::var("AWS_ENDPOINT_URL")
-                    .ok()
-                    .filter(|u| u.starts_with("http")),
+                endpoint: endpoint.clone(),
                 ..Limits::default()
             },
             cancel,
@@ -515,7 +524,14 @@ fn merge(inv: &mut Inventory, part: Inventory, region: Option<&str>) {
                 Some(_) => old.error = node.error,
                 None => *old = node,
             },
-            None => inv.profiles.push(node),
+            None => {
+                if region.is_none()
+                    && let Some(acct) = &node.account
+                {
+                    inv.profiles.retain(|p| p.account.as_ref() != Some(acct));
+                }
+                inv.profiles.push(node)
+            }
         }
     }
     inv.profiles.sort_by(|a, b| a.profile.cmp(&b.profile));
@@ -569,7 +585,10 @@ pub async fn aws_save_settings(
     }
     for (key, c) in &settings.clients {
         if key.len() > 140 || c.name.chars().count() > 60 || c.name.chars().any(char::is_control) {
-            return Err(CmdError::new("invalid", "Nome de cliente inválido: use até 60 caracteres."));
+            return Err(CmdError::new(
+                "invalid",
+                "Nome de cliente inválido: use até 60 caracteres.",
+            ));
         }
         if let Some(p) = &c.profile {
             profile(&profiles, p)?;
@@ -580,7 +599,9 @@ pub async fn aws_save_settings(
     for c in clean.clients.values_mut() {
         c.name = c.name.trim().to_string();
     }
-    clean.clients.retain(|_, c| !c.name.is_empty() || c.profile.is_some());
+    clean
+        .clients
+        .retain(|_, c| !c.name.is_empty() || c.profile.is_some());
     clean.favorites.dedup();
     state
         .vessel
@@ -1079,6 +1100,57 @@ mod tests {
             regions,
             error: None,
         }
+    }
+
+    #[test]
+    fn each_account_maps_once() {
+        let profiles = config::parse(
+            "[profile master]
+region = sa-east-1
+             [profile prod-admin]
+role_arn = arn:aws:iam::222222222222:role/Admin
+source_profile = master
+             [profile prod-ro]
+role_arn = arn:aws:iam::222222222222:role/ReadOnly
+source_profile = master
+             [profile dev]
+role_arn = arn:aws:iam::333333333333:role/Dev
+source_profile = master
+",
+        );
+        let names: Vec<String> = profiles.iter().map(|p| p.name.clone()).collect();
+        let mut settings = AwsSettings::default();
+        let jobs = jobs_for(&profiles, &settings, &names, None);
+        let summary: Vec<(String, Vec<String>)> = jobs
+            .iter()
+            .map(|j| (j.profile.clone(), j.alternates.clone()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                ("prod-admin".into(), vec!["prod-ro".into()]),
+                ("dev".into(), vec![]),
+                ("master".into(), vec![])
+            ],
+            "one job per account; the master has no known account and maps alone"
+        );
+        assert!(
+            jobs.iter().all(|j| j.home_region == "sa-east-1"),
+            "the master's region"
+        );
+        // The client's chosen profile goes first.
+        settings.clients.insert(
+            "222222222222".into(),
+            ClientPrefs {
+                name: String::new(),
+                profile: Some("prod-ro".into()),
+            },
+        );
+        let jobs = jobs_for(&profiles, &settings, &names, None);
+        assert_eq!(
+            (jobs[0].profile.as_str(), jobs[0].alternates.as_slice()),
+            ("prod-ro", ["prod-admin".to_string()].as_slice())
+        );
     }
 
     #[test]

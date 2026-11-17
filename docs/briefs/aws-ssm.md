@@ -28,7 +28,7 @@ Um menu novo, **AWS**, que:
   1. `ec2:DescribeRegions` (só as regiões habilitadas);
   2. em cada região, `ssm:DescribeInstanceInformation` e `ec2:DescribeInstances`, com paginação.
 - **Contra a cota da API:**
-  - um limite global de consultas simultâneas (padrão 4) e no máximo uma por região de cada conta;
+  - um limite global de consultas simultâneas (padrão 64, revisto para mapear centenas de perfis; o limite da AWS é por conta e região) e no máximo uma por região de cada conta;
   - o modo de retry adaptativo do SDK, com backoff exponencial quando a AWS responde `Throttling`.
 - **Contra o consumo de CPU e memória:**
   - um único runtime assíncrono, sem uma thread por consulta;

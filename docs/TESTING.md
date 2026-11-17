@@ -111,7 +111,7 @@ O que roda e quando tem teste automático: `cargo test -p vessel-desktop --lib` 
 
 ## 3.6 AWS
 
-O leitor de `~/.aws/config`, a classificação dos erros, o limitador e o mapeamento contra um servidor falso de EC2 e SSM (paginação, 5.000 instâncias, throttling com retry, `AccessDenied`, cancelamento) têm teste automático: `cargo test -p vessel-desktop --lib aws`.
+O leitor de `~/.aws/config`, a classificação dos erros, o limitador, o assume role feito pelo app, uma conta mapeada uma vez só e o mapeamento contra um servidor falso de EC2 e SSM (paginação, 5.000 instâncias, 250 contas em 17 regiões, throttling com retry, `AccessDenied`, cancelamento) têm teste automático: `cargo test -p vessel-desktop --lib aws`.
 
 Para conferir à mão, com uma conta real: um perfil mestre, perfis de assume role a partir dele, instâncias online e offline no Session Manager.
 

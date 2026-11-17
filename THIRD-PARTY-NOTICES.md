@@ -44,6 +44,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [aws-runtime](https://github.com/smithy-lang/smithy-rs) | 1.10.4 | Apache-2.0 |
 | [aws-sdk-ec2](https://github.com/awslabs/aws-sdk-rust) | 1.281.0 | Apache-2.0 |
 | [aws-sdk-ssm](https://github.com/awslabs/aws-sdk-rust) | 1.137.0 | Apache-2.0 |
+| [aws-sdk-sts](https://github.com/awslabs/aws-sdk-rust) | 1.126.0 | Apache-2.0 |
 | [aws-sigv4](https://github.com/smithy-lang/smithy-rs) | 1.6.5 | Apache-2.0 |
 | [aws-smithy-async](https://github.com/smithy-lang/smithy-rs) | 1.3.1 | Apache-2.0 |
 | [aws-smithy-http](https://github.com/smithy-lang/smithy-rs) | 0.64.3 | Apache-2.0 |
@@ -764,7 +765,7 @@ Rust:
 - MIT: 154
 - Apache-2.0 OR MIT: 108
 - MIT/Apache-2.0: 27
-- Apache-2.0: 24
+- Apache-2.0: 25
 - Zlib OR Apache-2.0 OR MIT: 18
 - Unicode-3.0: 18
 - Unlicense OR MIT: 9

@@ -691,3 +691,6 @@ input[aria-invalid="true"] + .field-hint { color: var(--danger); }
   .aws-actions .btn > span:not(.icon) { display: none; }
   .aws-region-chips { display: none; }
 }
+.aws-summary-tools { margin-left: auto; display: inline-flex; gap: 16px; }
+.aws-summary-tools .link-like { color: var(--text-2); font-size: 12.5px; }
+.aws-summary-tools .link-like:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }

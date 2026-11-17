@@ -27,6 +27,32 @@ pub struct Profile {
     pub master: String,
     /// The chain is broken: a missing `source_profile` or a loop. Says why.
     pub problem: Option<String>,
+    /// Assume-role settings Vessel can apply itself (STS) instead of starting the CLI.
+    #[serde(skip)]
+    pub assume: AssumeOptions,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AssumeOptions {
+    pub mfa_serial: Option<String>,
+    pub external_id: Option<String>,
+    pub role_session_name: Option<String>,
+    pub duration_seconds: Option<i32>,
+}
+
+impl Profile {
+    /// Whether Vessel can assume this profile's role itself from its source profile's credentials:
+    /// a plain `role_arn` + `source_profile` (not itself), without MFA or a credential source.
+    pub fn simple_assume(&self) -> bool {
+        self.role_arn.is_some()
+            && self
+                .source_profile
+                .as_ref()
+                .is_some_and(|s| *s != self.name)
+            && self.credential_source.is_none()
+            && self.assume.mfa_serial.is_none()
+            && self.problem.is_none()
+    }
 }
 
 /// Where the CLI reads its config: `AWS_CONFIG_FILE`, or `~/.aws/config`.
@@ -131,6 +157,12 @@ pub fn parse(text: &str) -> Vec<Profile> {
                 dependents: Vec::new(),
                 master: name.clone(),
                 problem: None,
+                assume: AssumeOptions {
+                    mfa_serial: get("mfa_serial"),
+                    external_id: get("external_id"),
+                    role_session_name: get("role_session_name"),
+                    duration_seconds: get("duration_seconds").and_then(|d| d.parse().ok()),
+                },
             };
             (name, profile)
         })
@@ -325,7 +357,11 @@ source_profile = self
         );
         assert_eq!(get(&p, "prod").account.as_deref(), Some("222222222222"));
         assert_eq!(get(&p, "master").sign_in.as_deref(), Some("login"));
-        assert_eq!(get(&p, "master").account.as_deref(), Some("111111111111"), "from the login session ARN");
+        assert_eq!(
+            get(&p, "master").account.as_deref(),
+            Some("111111111111"),
+            "from the login session ARN"
+        );
         assert_eq!(get(&p, "sso-team").sign_in.as_deref(), Some("sso"));
         assert_eq!(get(&p, "sso-team").account.as_deref(), Some("444444444444"));
         assert_eq!(get(&p, "default").sign_in.as_deref(), Some("keys"));
@@ -362,6 +398,28 @@ source_profile = self
                 .contains("volta")
         );
         assert_eq!(default_master(&p).as_deref(), Some("master"));
+        assert!(get(&p, "prod").simple_assume() && get(&p, "prod-readonly").simple_assume());
+        assert!(
+            !get(&p, "master").simple_assume()
+                && !get(&p, "self").simple_assume()
+                && !get(&p, "broken").simple_assume()
+        );
+        let mfa = parse(
+            "[profile a]
+region=x
+[profile b]
+role_arn = arn:aws:iam::222222222222:role/R
+source_profile = a
+mfa_serial = arn:aws:iam::1:mfa/me
+external_id = xyz
+duration_seconds = 900",
+        );
+        let b = mfa.iter().find(|x| x.name == "b").unwrap();
+        assert!(!b.simple_assume(), "MFA goes through the CLI");
+        assert_eq!(
+            (b.assume.external_id.as_deref(), b.assume.duration_seconds),
+            (Some("xyz"), Some(900))
+        );
         let fam: Vec<_> = family(&p, "master")
             .iter()
             .map(|x| x.name.as_str())
