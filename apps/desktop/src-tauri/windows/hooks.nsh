@@ -19,3 +19,9 @@
 !macro NSIS_HOOK_PREUNINSTALL
   Delete /REBOOTOK "$INSTDIR\vessel-mcp-old-*.exe"
 !macroend
+
+; Windows keeps icons in a cache, so a taskbar pin or shortcut can show the previous version's
+; icon after an update. Telling the shell that file icons changed makes it read them again.
+!macro NSIS_HOOK_POSTINSTALL
+  System::Call "shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)"
+!macroend
