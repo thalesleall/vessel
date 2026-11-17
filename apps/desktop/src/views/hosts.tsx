@@ -4,6 +4,7 @@ import { itemsOf, vaultName, vaults } from "../store";
 import { connectHost, connecting } from "../terminal";
 import { Badge, Button, Empty, Field, Icon, Modal, colorFor, initials } from "../ui";
 import { EditorFooter, ItemSelect, VaultSelect, defaultVault, removeItem, saveEntity, splitTags } from "./common";
+import { PORT_MSG, intIn, invalid, isPort } from "../validate";
 
 type HostItem = Item<{ type: "host"; data: Host }>;
 type GroupItem = Item<{ type: "group"; data: Group }>;
@@ -108,15 +109,13 @@ function HostEditor(props: { item: HostItem | null; group: string | null; onClos
   const [busy, setBusy] = createSignal(false);
   const set = <K extends keyof Host>(k: K, v: Host[K]) => setD((x) => ({ ...x, [k]: v }));
 
-  const [error, setError] = createSignal<string | null>(null);
-  let addressInput: HTMLInputElement | undefined;
   const save = async () => {
-    if (!d().address.trim()) {
-      setError("Informe o endereço do host.");
-      addressInput?.focus();
-      return;
+    if (busy()) return;
+    if (!d().address.trim()) return invalid("Endereço", "Endereço: não pode ficar em branco.");
+    if (d().port != null && !isPort(d().port)) return invalid("Porta", PORT_MSG);
+    if (d().keepalive_secs != null && intIn(d().keepalive_secs, 5, 3600) === null) {
+      return invalid("Keepalive", "Keepalive inválido: use um número inteiro de 5 a 3600 segundos, ou deixe em branco.");
     }
-    setError(null);
     setBusy(true);
     const host: Host = { ...d(), startup_snippet_id: d().startup_snippet_ids[0] ?? null, address: d().address.trim(), tags: splitTags(tags()), username: d().username?.trim() || null, password: d().password || null };
     if (await saveEntity(props.item, vault(), { type: "host", data: host })) props.onClose();
@@ -129,7 +128,7 @@ function HostEditor(props: { item: HostItem | null; group: string | null; onClos
         onDelete={props.item ? async () => { await removeItem(props.item!, "o host"); props.onClose(); } : undefined} />}>
       <div class="form">
         <div class="form-row-3">
-          <Field label="Endereço" hint={error() ?? undefined}><input ref={addressInput} value={d().address} aria-invalid={!!error()} onInput={(e) => { set("address", e.currentTarget.value); setError(null); }} placeholder="192.168.0.10 ou servidor.com…" autofocus /></Field>
+          <Field label="Endereço"><input value={d().address} onInput={(e) => set("address", e.currentTarget.value)} placeholder="192.168.0.10 ou servidor.com…" autofocus /></Field>
           <Field label="Porta"><input type="number" value={d().port ?? ""} placeholder="22" onInput={(e) => set("port", e.currentTarget.value ? Number(e.currentTarget.value) : null)} /></Field>
           <Field label="Cofre"><VaultSelect value={vault()} onChange={setVault} /></Field>
         </div>
@@ -169,8 +168,8 @@ function GroupEditor(props: { item: GroupItem | null; onClose: () => void }) {
   const [d, setD] = createSignal<Group>(props.item ? { ...props.item.entity.data } : blank.group());
   const [vault, setVault] = createSignal(props.item?.vault_id ?? defaultVault());
   const save = async () => {
-    if (!d().label.trim()) return;
-    if (await saveEntity(props.item, vault(), { type: "group", data: d() })) props.onClose();
+    if (!d().label.trim()) return invalid("Nome", "Nome do grupo: não pode ficar em branco.");
+    if (await saveEntity(props.item, vault(), { type: "group", data: { ...d(), label: d().label.trim() } })) props.onClose();
   };
   return (
     <Modal title={props.item ? "Editar grupo" : "Novo grupo"} onClose={props.onClose}

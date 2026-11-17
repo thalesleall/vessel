@@ -4,6 +4,7 @@ import { itemsOf } from "../store";
 import { openProfile, openShell } from "../terminal";
 import { Button, Empty, Field, Icon, Modal, ShellIcon } from "../ui";
 import { EditorFooter, VaultSelect, defaultVault, removeItem, saveEntity } from "./common";
+import { invalid } from "../validate";
 
 type ProfileItem = Item<{ type: "terminal_profile"; data: TerminalProfile }>;
 
@@ -56,8 +57,8 @@ export function ProfilesView() {
         </Show>
       </div>
 
-      <Show when={editing()}>
-        {(e) => <ProfileEditor item={e() === "new" ? null : (e() as ProfileItem)} shells={(shells() ?? []).map((s) => s.shell)} onClose={() => setEditing(null)} />}
+      <Show when={editing()} keyed>
+        {(e) => <ProfileEditor item={e === "new" ? null : (e as ProfileItem)} shells={(shells() ?? []).map((s) => s.shell)} onClose={() => setEditing(null)} />}
       </Show>
     </>
   );
@@ -83,10 +84,18 @@ function ProfileEditor(props: { item: ProfileItem | null; shells: Shell[]; onClo
     else setD({ ...d(), shell: options().find((s) => shellKey(s) === key) ?? { kind: "pwsh" } });
   };
   const save = async () => {
+    const shell = d().shell;
+    if (shell.kind === "custom" && !shell.program.trim()) return invalid("Programa", "Programa: não pode ficar em branco. Informe o caminho do executável.");
     const envMap: Record<string, string> = {};
-    for (const line of env().split("\n")) {
+    for (const [n, raw] of env().split("\n").entries()) {
+      const line = raw.replace(/\r$/, "");
+      if (!line.trim()) continue;
       const i = line.indexOf("=");
-      if (i > 0) envMap[line.slice(0, i).trim()] = line.slice(i + 1);
+      const name = i > 0 ? line.slice(0, i).trim() : "";
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        return invalid("Variáveis de ambiente", `Variável inválida na linha ${n + 1} ("${line.trim().slice(0, 40)}"): use NOME=valor, com o nome feito de letras, números e _.`);
+      }
+      envMap[name] = line.slice(i + 1);
     }
     const profile: TerminalProfile = {
       ...d(), label: d().label.trim() || shellLabel(d().shell), args: args().split(" ").filter(Boolean), env: envMap,
@@ -102,7 +111,7 @@ function ProfileEditor(props: { item: ProfileItem | null; shells: Shell[]; onClo
         <Field label="Shell">
           <select value={shellKey(d().shell)} onChange={(e) => choose(e.currentTarget.value)}>
             <For each={options()}>{(s) => <option value={shellKey(s)}>{shellLabel(s)}</option>}</For>
-            <option value="custom">Programa personalizadoâ€¦</option>
+            <option value="custom">Programa personalizado…</option>
           </select>
         </Field>
         <Show when={d().shell.kind === "custom"}>

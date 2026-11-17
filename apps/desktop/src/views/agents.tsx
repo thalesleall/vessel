@@ -2,6 +2,7 @@ import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { api, on, type Activity, type McpInfo } from "../api";
 import { attempt, copy } from "../store";
 import { Badge, Button, Field, Icon, timeAgo } from "../ui";
+import { PORT_MSG, invalid, isPort } from "../validate";
 
 export function AgentsView() {
   const [info, setInfo] = createSignal<McpInfo | null>(null);
@@ -22,6 +23,7 @@ export function AgentsView() {
   const configure = async (patch: Partial<{ enabled: boolean; allowTerminalInput: boolean; allowWrites: boolean }>) => {
     const i = info();
     if (!i) return;
+    if (!isPort(port())) return invalid("Porta", PORT_MSG);
     const r = await attempt(() => api.mcpConfigure(
       patch.enabled ?? i.enabled, port(), patch.allowTerminalInput ?? i.allow_terminal_input, patch.allowWrites ?? i.allow_writes,
     ));
@@ -79,7 +81,7 @@ export function AgentsView() {
               <Show when={i().error}><div class="callout callout-danger" style={{ "margin-top": "12px" }}>{i().error}</div></Show>
               <div class="form" style={{ "margin-top": "16px" }}>
                 <div class="form-row">
-                  <Field label="Porta"><input type="number" value={port()} onInput={(e) => setPort(Number(e.currentTarget.value))} onChange={() => configure({})} /></Field>
+                  <Field label="Porta"><input type="number" value={port()} onInput={(e) => setPort(e.currentTarget.value === "" ? NaN : Number(e.currentTarget.value))} onChange={() => configure({})} /></Field>
                   <Field label="Endereço"><div class="code-block" style={{ padding: "8px 12px" }}>{i().url}</div></Field>
                 </div>
                 <label class="check"><input type="checkbox" checked={i().allow_writes} onChange={(e) => configure({ allowWrites: e.currentTarget.checked })} />

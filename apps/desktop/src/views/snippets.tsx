@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
-import { api, blank, shellLabel, type RunRecord, type Schedule, type Shell, type Snippet, type SnippetTarget } from "../api";
+import { invalid, intIn } from "../validate";
+import { api, blank, errorMessage, shellLabel, type RunRecord, type Schedule, type Shell, type Snippet, type SnippetTarget } from "../api";
 import { attempt, itemsOf, lastRuns, personalVaultId, scheduler, sessions, tryAction, vaultName, vaults } from "../store";
 import { pasteSnippet, runSnippet, snippetData, targetText, type SnippetItem } from "../snippetrun";
 import { Badge, Button, Empty, Field, Icon, Modal, ShellIcon, confirmAction, timeAgo } from "../ui";
@@ -79,7 +80,7 @@ export function SnippetsView() {
                       <Show when={last()} fallback={<Show when={!runnable()}><span class="mono">{d().script.split("\n")[0]}</span></Show>}>
                         {(r) => <><StatusDot status={r().status} />{statusText[r().status]} · {timeAgo(r().finished_at ?? r().started_at)}</>}
                       </Show>
-                      <Show when={nextFor(s.id)}>{(n) => <span class="next" title="Próximo agendamento"><Icon name="clock" size={12} />{when(n())}</span>}</Show>
+                      <Show when={nextFor(s.id)} keyed>{(n) => <span class="next" title="Próximo agendamento"><Icon name="clock" size={12} />{when(n)}</span>}</Show>
                     </div>
                   </div>
                   <div class="actions">
@@ -218,7 +219,7 @@ function ScheduleRow(props: { value: Schedule; onChange: (s: Schedule) => void; 
   }));
   onCleanup(() => clearTimeout(timer));
   return (
-    <div class="schedule-row">
+    <div class="schedule-row" data-field>
       <div class="schedule-inputs">
         <input class="mono" value={props.value.cron} disabled={props.disabled} aria-label="Expressão cron" placeholder="0 7 * * 1-5"
           onInput={(e) => props.onChange({ ...props.value, cron: e.currentTarget.value })} spellcheck={false} />
@@ -263,27 +264,37 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
       : { kind: "hosts", host_ids: [] }));
   };
   const [busy, setBusy] = createSignal(false);
-  const notice = (title: string, message: string) => confirmAction({ title, message, confirm: "Entendi", danger: false });
   const save = async () => {
     if (busy()) return;
-    if (!d().script.trim()) {
-      await notice("Falta o script", "Escreva o comando que o snippet vai rodar antes de salvar.");
-      return;
-    }
-    if (d().target.kind === "hosts" && hostIds().length === 0) {
-      await notice("Escolha os hosts", "Marque pelo menos um host, ou escolha outro destino.");
-      return;
+    if (!d().script.trim()) return invalid("Script", "Script: não pode ficar em branco. Escreva o comando que o snippet vai rodar.");
+    if (d().target.kind === "hosts" && hostIds().length === 0) return invalid("Hosts", "Marque pelo menos um host, ou escolha outro destino.");
+    if (d().target.kind !== "none" && intIn(d().timeout_secs, 1, 21_600) === null) {
+      return invalid("Tempo máximo", "Tempo máximo inválido: use um número inteiro de 1 a 21600 segundos.");
     }
     setBusy(true);
-    try { await persist(); } finally { setBusy(false); }
+    try {
+      if (d().target.kind !== "none" && !(await schedulesValid())) return;
+      await persist();
+    } finally { setBusy(false); }
+  };
+  /** Every schedule needs a valid cron expression; the first bad one is pointed out. */
+  const schedulesValid = async () => {
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('.modal .schedule-row input[aria-label="Expressão cron"]')];
+    for (const [i, s] of d().schedules.entries()) {
+      if (!s.cron.trim()) return invalid(inputs[i] ?? "Agendamentos", "Agendamento: não pode ficar em branco. Escreva o horário ou remova a linha.");
+      try { await api.cronPreview(s.cron); } catch (e) {
+        return invalid(inputs[i] ?? null, `Agendamento inválido (${s.cron.trim()}): ${errorMessage(e)}`);
+      }
+    }
+    return true;
   };
   const persist = async () => {
     const data: Snippet = {
       ...d(),
       label: d().label.trim() || d().script.split("\n")[0].slice(0, 40),
       tags: splitTags(tags()),
-      timeout_secs: Math.min(Math.max(Math.round(d().timeout_secs) || 60, 1), 21_600),
-      schedules: d().schedules.filter((s) => s.cron.trim()),
+      timeout_secs: intIn(d().timeout_secs, 1, 21_600) ?? 60,
+      schedules: d().schedules.map((s) => ({ ...s, cron: s.cron.trim() })),
       agent_allowed: d().agent_allowed && d().target.kind !== "none" && !d().confirm,
     };
     if (await saveEntity(props.item, vault(), { type: "snippet", data })) props.onClose();
@@ -341,7 +352,7 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
 
         <Show when={d().target.kind !== "none"}>
           <div class="form-row">
-            <Field label="Tempo máximo (segundos)" hint="Passou disso, a execução é interrompida."><input type="number" min="1" max="21600" value={d().timeout_secs} onInput={(e) => set("timeout_secs", Number(e.currentTarget.value))} /></Field>
+            <Field label="Tempo máximo (segundos)" hint="Passou disso, a execução é interrompida."><input type="number" min="1" max="21600" value={d().timeout_secs} onInput={(e) => set("timeout_secs", e.currentTarget.value === "" ? NaN : Number(e.currentTarget.value))} /></Field>
             <div class="field" style={{ "justify-content": "center" }}>
               <label class="check"><input type="checkbox" checked={d().confirm} onChange={(e) => setD({ ...d(), confirm: e.currentTarget.checked, agent_allowed: e.currentTarget.checked ? false : d().agent_allowed })} />Pedir confirmação antes de rodar</label>
             </div>

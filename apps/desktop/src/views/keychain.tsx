@@ -1,8 +1,9 @@
 import { For, Show, createSignal } from "solid-js";
 import { blank, type Identity, type Item, type SshKey } from "../api";
-import { copy, itemsOf, toast } from "../store";
+import { copy, itemsOf } from "../store";
 import { Badge, Button, Empty, Field, Icon, Modal } from "../ui";
 import { EditorFooter, ItemSelect, VaultSelect, defaultVault, removeItem, saveEntity } from "./common";
+import { invalid } from "../validate";
 
 type IdentityItem = Item<{ type: "identity"; data: Identity }>;
 type KeyItem = Item<{ type: "ssh_key"; data: SshKey }>;
@@ -94,7 +95,7 @@ function IdentityEditor(props: { item: IdentityItem | null; onClose: () => void 
   const [d, setD] = createSignal<Identity>(props.item ? { ...props.item.entity.data } : blank.identity());
   const [vault, setVault] = createSignal(props.item?.vault_id ?? defaultVault());
   const save = async () => {
-    if (!d().username.trim()) return toast("Informe o usuário.", "error");
+    if (!d().username.trim()) return invalid("Usuário", "Usuário: não pode ficar em branco.");
     const data = { ...d(), label: d().label.trim() || d().username, password: d().password || null };
     if (await saveEntity(props.item, vault(), { type: "identity", data })) props.onClose();
   };
@@ -122,7 +123,8 @@ function KeyEditor(props: { item: KeyItem | null; onClose: () => void }) {
     setD({ ...d(), [field]: text.trim(), label: d().label || file.name.replace(/\.(pub|pem|key)$/, "") });
   };
   const save = async () => {
-    if (!d().private_key.includes("PRIVATE KEY")) return toast("Cole ou importe uma chave privada válida.", "error");
+    if (!d().private_key.trim()) return invalid("Chave privada", "Chave privada: não pode ficar em branco. Cole ou importe a chave.");
+    if (!d().private_key.includes("PRIVATE KEY")) return invalid("Chave privada", "Chave privada inválida: cole a chave inteira, de -----BEGIN até -----END.");
     const data = { ...d(), label: d().label.trim() || "Chave", passphrase: d().passphrase || null };
     if (await saveEntity(props.item, vault(), { type: "ssh_key", data })) props.onClose();
   };

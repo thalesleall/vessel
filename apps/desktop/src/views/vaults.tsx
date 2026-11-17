@@ -1,6 +1,7 @@
 import { For, Show, createResource, createSignal } from "solid-js";
 import { api, roleLabel, type InviteResponse, type Role, type VaultView } from "../api";
 import { attempt, copy, items, refreshData, setSection, status, toast, tryAction, vaults } from "../store";
+import { invalid, looksLikeEmail } from "../validate";
 import { Badge, Button, Empty, Field, Icon, Modal, colorFor, confirmAction, initials } from "../ui";
 
 export function VaultsView() {
@@ -64,11 +65,13 @@ function VaultDetail(props: { vault: VaultView; onClosed: () => void }) {
   const manage = () => props.vault.role === "owner" || props.vault.role === "admin";
 
   const rename = async () => {
-    await attempt(() => api.updateVault(props.vault.id, name(), props.vault.description, props.vault.color), "Cofre renomeado");
+    if (!name().trim()) return invalid("Nome do cofre", "Nome do cofre: não pode ficar em branco.");
+    await attempt(() => api.updateVault(props.vault.id, name().trim(), props.vault.description, props.vault.color), "Cofre renomeado");
     refreshData();
   };
   const createInvite = async () => {
-    const r = await attempt(() => api.invite(props.vault.id, inviteRole(), inviteEmail()));
+    if (inviteEmail().trim() && !looksLikeEmail(inviteEmail())) return invalid("E-mail", "E-mail inválido: confira o endereço, ou deixe em branco para um convite aberto.");
+    const r = await attempt(() => api.invite(props.vault.id, inviteRole(), inviteEmail().trim()));
     if (r) setInvite(r);
   };
   const approve = async (userId: string, email: string, fp: string) => {
@@ -109,7 +112,7 @@ function VaultDetail(props: { vault: VaultView; onClosed: () => void }) {
         <div class="form-row" style={{ "align-items": "end" }}>
           <Field label="Nome do cofre"><input value={name()} onInput={(e) => setName(e.currentTarget.value)} disabled={!manage()} /></Field>
           <div style={{ display: "flex", gap: "8px" }}>
-            <Show when={manage()}><Button onClick={rename} disabled={name() === props.vault.name || !name().trim()}>Renomear</Button></Show>
+            <Show when={manage()}><Button onClick={rename} disabled={name() === props.vault.name}>Renomear</Button></Show>
             <Show when={manage() && !props.vault.personal}>
               <Button icon="sync" onClick={async () => { await attempt(() => api.rotateVault(props.vault.id), "Chave do cofre trocada"); refreshData(); }}>Trocar chave</Button>
             </Show>
@@ -202,9 +205,9 @@ function CreateVault(props: { onClose: () => void }) {
   const [name, setName] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const create = async () => {
-    if (!name().trim()) return;
+    if (!name().trim()) return invalid("Nome", "Nome do cofre: não pode ficar em branco.");
     setBusy(true);
-    if (await attempt(() => api.createVault(name()), "Cofre criado") !== undefined) {
+    if (await attempt(() => api.createVault(name().trim()), "Cofre criado") !== undefined) {
       await refreshData();
       props.onClose();
     }
@@ -221,7 +224,8 @@ function CreateVault(props: { onClose: () => void }) {
 function AcceptInvite(props: { onClose: () => void }) {
   const [token, setToken] = createSignal("");
   const accept = async () => {
-    const r = await attempt(() => api.acceptInvite(token()));
+    if (!token().trim()) return invalid("Link ou código", "Link ou código do convite: não pode ficar em branco. Cole o que você recebeu.");
+    const r = await attempt(() => api.acceptInvite(token().trim()));
     if (r !== undefined) {
       toast("Convite aceito. Um administrador do cofre precisa aprovar você.", "success");
       props.onClose();
@@ -229,7 +233,7 @@ function AcceptInvite(props: { onClose: () => void }) {
   };
   return (
     <Modal title="Aceitar convite" onClose={props.onClose}
-      footer={<><Button onClick={props.onClose}>Cancelar</Button><Button variant="primary" onClick={accept} disabled={!token().trim()}>Aceitar</Button></>}>
+      footer={<><Button onClick={props.onClose}>Cancelar</Button><Button variant="primary" onClick={accept}>Aceitar</Button></>}>
       <div class="form">
         <Field label="Link ou código do convite"><input class="mono" value={token()} onInput={(e) => setToken(e.currentTarget.value)} autofocus /></Field>
         <div class="callout callout-info">Depois de aceitar, informe sua impressão digital a quem convidou você:<br /><span class="fingerprint">{status()?.fingerprint}</span></div>

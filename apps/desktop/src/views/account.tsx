@@ -3,6 +3,7 @@ import { api, errorCode, errorMessage, type MigrationOutcome, type ServerInfo } 
 import { attempt, copy, refreshData, setStatus, status, toast, tryAction } from "../store";
 import { Button, Field, Icon, Modal, confirmAction } from "../ui";
 import { RecoveryKeyBody } from "../auth";
+import { invalid, looksLikeEmail, looksLikeUrl } from "../validate";
 
 /** Account panel: password, lock, and moving between local-only mode and a server. */
 export function Account() {
@@ -15,8 +16,10 @@ export function Account() {
   const local = () => status()?.local ?? false;
 
   const change = async () => {
-    if (next() !== next2()) return toast("As senhas novas não coincidem.", "error");
-    if (next().length < 10) return toast("Use pelo menos 10 caracteres.", "error");
+    if (!current()) return invalid("Senha atual", "Senha atual: não pode ficar em branco.");
+    if (!next()) return invalid("Nova senha", "Nova senha: não pode ficar em branco.");
+    if (next().length < 10) return invalid("Nova senha", "Nova senha curta demais: use pelo menos 10 caracteres.");
+    if (next() !== next2()) return invalid("Confirmar", "As senhas novas não coincidem.");
     const ok = await tryAction(
       () => api.changePassword(current(), next()),
       local() ? "Senha alterada." : "Senha alterada. Os outros computadores precisam entrar de novo.",
@@ -80,7 +83,7 @@ export function Account() {
         <Field label="Confirmar"><input type="password" value={next2()} onInput={(e) => setNext2(e.currentTarget.value)} autocomplete="new-password" /></Field>
       </div>
       <div style={{ display: "flex", gap: "8px", "margin-top": "12px", "flex-wrap": "wrap" }}>
-        <Button onClick={change} disabled={!current() || !next()}>Trocar senha</Button>
+        <Button onClick={change}>Trocar senha</Button>
         <span style={{ flex: 1 }} />
         <Button icon="lock" onClick={async () => setStatus(await api.lock())}>Bloquear</Button>
         <Show when={!local()}><Button icon="unlink" onClick={disconnect}>Parar de sincronizar</Button></Show>
@@ -112,10 +115,10 @@ function DeleteAccount(props: { onClose: () => void }) {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const email = () => status()?.email ?? "";
-  const ready = () => password() !== "" && typed().trim().toLowerCase() === email().toLowerCase();
   const submit = async (e: Event) => {
     e.preventDefault();
-    if (!ready()) return;
+    if (!password()) return invalid("Senha", "Senha: não pode ficar em branco.");
+    if (typed().trim().toLowerCase() !== email().toLowerCase()) return invalid("Digite", `Para confirmar, digite exatamente ${email()}.`);
     setBusy(true);
     setError(null);
     try {
@@ -130,7 +133,7 @@ function DeleteAccount(props: { onClose: () => void }) {
     <Modal title="Excluir sua conta?" onClose={props.onClose}
       footer={<>
         <Button onClick={props.onClose}>Cancelar</Button>
-        <Button variant="danger" icon="trash" busy={busy()} disabled={!ready()} onClick={submit}>Excluir para sempre</Button>
+        <Button variant="danger" icon="trash" busy={busy()} onClick={submit}>Excluir para sempre</Button>
       </>}>
       <form class="form" onSubmit={submit}>
         <p class="confirm-text">Seus cofres e tudo o que há neles serão apagados do servidor e deste computador. Quem compartilha esses cofres com você também perde o acesso a eles.</p>
@@ -157,9 +160,11 @@ function ConnectServer(props: { onClose: () => void; onDone: (o: MigrationOutcom
   const check = async (e: Event) => {
     e.preventDefault();
     setError(null);
+    if (!url().trim()) return invalid("Endereço do servidor", "Endereço do servidor: não pode ficar em branco.");
+    if (!looksLikeUrl(url())) return invalid("Endereço do servidor", "Endereço inválido: comece com https:// (ex.: https://vessel.minhaempresa.com).");
     setBusy(true);
     try {
-      setInfo(await api.serverInfo(url()));
+      setInfo(await api.serverInfo(url().trim()));
     } catch (err) {
       setError(`Não foi possível falar com o servidor: ${errorMessage(err)}`);
     } finally {
@@ -170,15 +175,20 @@ function ConnectServer(props: { onClose: () => void; onDone: (o: MigrationOutcom
   const submit = async (e: Event) => {
     e.preventDefault();
     setError(null);
+    if (!email().trim()) return invalid("E-mail", "E-mail: não pode ficar em branco.");
+    if (!looksLikeEmail(email())) return invalid("E-mail", "E-mail inválido: confira o endereço.");
+    if (!password()) return invalid("Senha", "Senha: não pode ficar em branco.");
     if (mode() === "new") {
-      if (password().length < 10) return setError("Use uma senha com pelo menos 10 caracteres.");
-      if (password() !== password2()) return setError("As senhas não coincidem.");
+      if (password().length < 10) return invalid("Senha", "Senha curta demais: use pelo menos 10 caracteres.");
+      if (password() !== password2()) return invalid("Confirme a senha", "As senhas não coincidem.");
+      if (info()!.first_user && !invite().trim()) return invalid("Código de instalação", "Código de instalação: não pode ficar em branco. Ele aparece no log do agente ao iniciar.");
+      if (info()!.signups !== "open" && !info()!.first_user && !invite().trim()) return invalid("Código de convite", "Código de convite: não pode ficar em branco. Este servidor só aceita contas novas com convite.");
     }
     setBusy(true);
     try {
       props.onDone(mode() === "new"
-        ? await api.connectNewAccount(url(), email(), password(), invite())
-        : await api.connectExistingAccount(url(), email(), password()));
+        ? await api.connectNewAccount(url().trim(), email().trim(), password(), invite())
+        : await api.connectExistingAccount(url().trim(), email().trim(), password()));
     } catch (err) {
       setError(errorCode(err) === "wrong_password" ? "E-mail ou senha incorretos." : errorMessage(err));
     } finally {
@@ -189,7 +199,7 @@ function ConnectServer(props: { onClose: () => void; onDone: (o: MigrationOutcom
   return (
     <Modal title="Conectar a um servidor" onClose={props.onClose}>
       <Show when={info()} fallback={
-        <form class="form" onSubmit={check}>
+        <form class="form" onSubmit={check} noValidate>
           <ul class="explain">
             <li><Icon name="check" size={16} /><span>Tudo o que está neste computador vai junto: hosts, chaves, snippets e perfis.</span></li>
             <li><Icon name="shield" size={16} /><span>Antes de mudar, o Vessel salva um backup criptografado aqui.</span></li>
@@ -198,10 +208,10 @@ function ConnectServer(props: { onClose: () => void; onDone: (o: MigrationOutcom
             <input type="url" placeholder="https://" value={url()} onInput={(e) => setUrl(e.currentTarget.value)} autofocus />
           </Field>
           <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
-          <Button type="submit" variant="primary" busy={busy()} disabled={!url().trim()}>Verificar servidor</Button>
+          <Button type="submit" variant="primary" busy={busy()}>Verificar servidor</Button>
         </form>
       }>
-        <form class="form" onSubmit={submit}>
+        <form class="form" onSubmit={submit} noValidate>
           <div class="server-pill">
             <Icon name="server" size={15} />
             <span style={{ flex: 1 }}>{info()!.name} em {info()!.server_id}</span>
@@ -254,9 +264,11 @@ function ConnectServer(props: { onClose: () => void; onDone: (o: MigrationOutcom
 
 function MigrationDone(props: { outcome: MigrationOutcome; toLocal: boolean; onClose: () => void }) {
   const [saved, setSaved] = createSignal(!props.outcome.recovery_key);
+  let box: HTMLInputElement | undefined;
+  const done = () => saved() ? props.onClose() : invalid(box ?? null, "Marque que guardou a chave de recuperação nova antes de concluir: a antiga não funciona mais.");
   return (
-    <Modal title={props.toLocal ? "Sincronização desligada" : "Servidor conectado"} onClose={() => saved() && props.onClose()}
-      footer={<Button variant="primary" disabled={!saved()} onClick={props.onClose}>Concluir</Button>}>
+    <Modal title={props.toLocal ? "Sincronização desligada" : "Servidor conectado"} onClose={done}
+      footer={<Button variant="primary" onClick={done}>Concluir</Button>}>
       <dl class="report">
         <dt>{props.toLocal ? "Itens copiados para cá" : "Itens enviados"}</dt><dd>{props.outcome.imported}</dd>
         <Show when={props.outcome.skipped_duplicates > 0}>
@@ -269,7 +281,7 @@ function MigrationDone(props: { outcome: MigrationOutcome; toLocal: boolean; onC
         <div class="section-title" style={{ "margin-top": "8px" }}>Sua nova chave de recuperação</div>
         <RecoveryKeyBody value={props.outcome.recovery_key!} />
         <label class="check" style={{ "margin-top": "12px" }}>
-          <input type="checkbox" checked={saved()} onChange={(e) => setSaved(e.currentTarget.checked)} />
+          <input ref={box} type="checkbox" checked={saved()} onChange={(e) => setSaved(e.currentTarget.checked)} />
           Guardei a chave nova. A antiga não funciona mais.
         </label>
       </Show>

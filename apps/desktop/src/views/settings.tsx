@@ -6,6 +6,7 @@ import { Badge, Button, Field, Icon, Modal, confirmAction, timeAgo } from "../ui
 import { ItemSelect } from "./common";
 import { Account } from "./account";
 import { ThemeSwitch } from "../auth";
+import { invalid } from "../validate";
 
 export function SettingsView() {
   return (
@@ -92,6 +93,17 @@ function Appearance() {
     await attempt(() => api.saveItem(item.vault_id, item.id, { type: "settings", data: { ...current, ...patch } }));
     refreshData();
   };
+  /** A number field saved on change: out of range, nothing is saved and the message stays until it is fixed. */
+  const num = (key: "font_size" | "line_height" | "scrollback" | "lock_after_minutes", label: string, min: number, max: number, whole: boolean) =>
+    (e: Event & { currentTarget: HTMLInputElement }) => {
+      const el = e.currentTarget;
+      const v = el.value.trim() === "" ? NaN : Number(el.value);
+      if (!Number.isFinite(v) || v < min || v > max || (whole && !Number.isInteger(v))) {
+        invalid(el, el.value.trim() === "" ? `${label}: não pode ficar em branco.` : `${label} inválido: use ${whole ? "um número inteiro" : "um número"} de ${min} a ${max}.`);
+        return;
+      }
+      update({ [key]: v });
+    };
   return (
     <Show when={settings()}>
       {(s) => (
@@ -100,9 +112,12 @@ function Appearance() {
           <p>Novos terminais usam estas opções. Com um servidor conectado, elas valem em todos os seus computadores.</p>
           <div class="form">
             <div class="form-row-3">
-              <Field label="Fonte"><input value={s().font_family} onChange={(e) => update({ font_family: e.currentTarget.value })} /></Field>
-              <Field label="Tamanho"><input type="number" value={s().font_size} onChange={(e) => update({ font_size: Number(e.currentTarget.value) })} /></Field>
-              <Field label="Altura da linha"><input type="number" step="0.05" value={s().line_height} onChange={(e) => update({ line_height: Number(e.currentTarget.value) })} /></Field>
+              <Field label="Fonte"><input value={s().font_family} onChange={(e) => {
+                if (e.currentTarget.value.trim()) return update({ font_family: e.currentTarget.value.trim() });
+                invalid(e.currentTarget, "Fonte: não pode ficar em branco.");
+              }} /></Field>
+              <Field label="Tamanho"><input type="number" value={s().font_size} onChange={num("font_size", "Tamanho", 8, 40, true)} /></Field>
+              <Field label="Altura da linha"><input type="number" step="0.05" value={s().line_height} onChange={num("line_height", "Altura da linha", 1, 2, false)} /></Field>
             </div>
             <div class="form-row-3">
               <Field label="Cursor">
@@ -110,8 +125,8 @@ function Appearance() {
                   <option value="bar">Barra</option><option value="block">Bloco</option><option value="underline">Sublinhado</option>
                 </select>
               </Field>
-              <Field label="Histórico (linhas)"><input type="number" value={s().scrollback} onChange={(e) => update({ scrollback: Number(e.currentTarget.value) })} /></Field>
-              <Field label="Bloquear após (min)" hint="0 = nunca"><input type="number" value={s().lock_after_minutes} onChange={(e) => update({ lock_after_minutes: Number(e.currentTarget.value) })} /></Field>
+              <Field label="Histórico (linhas)"><input type="number" value={s().scrollback} onChange={num("scrollback", "Histórico", 0, 1000000, true)} /></Field>
+              <Field label="Bloquear após (min)" hint="0 = nunca"><input type="number" value={s().lock_after_minutes} onChange={num("lock_after_minutes", "Bloquear após", 0, 1440, true)} /></Field>
             </div>
             <Field label="Perfil padrão (Ctrl+T)">
               <ItemSelect kind="terminal_profile" value={s().default_profile_id} onChange={(v) => update({ default_profile_id: v })} none="Primeiro da lista" />
@@ -258,7 +273,8 @@ function ServerAccounts() {
   const quotaValid = () => /^\d*$/.test(quotaText().trim());
   const saveQuota = async () => {
     const u = quotaFor();
-    if (!u || !quotaValid()) return;
+    if (!u) return;
+    if (!quotaValid()) return invalid("Espaço em MiB", "Cota inválida: use um número inteiro de MiB (0 é sem limite), ou deixe em branco.");
     const t = quotaText().trim();
     setQuotaFor(null);
     await update(u, { quota_bytes: t === "" ? null : Number(t) * MIB }, "Cota atualizada");
@@ -282,12 +298,11 @@ function ServerAccounts() {
           <Modal title={`Cota de ${u().email}`} onClose={() => setQuotaFor(null)}
             footer={<>
               <Button onClick={() => setQuotaFor(null)}>Cancelar</Button>
-              <Button variant="primary" disabled={!quotaValid()} onClick={saveQuota}>Salvar</Button>
+              <Button variant="primary" onClick={saveQuota}>Salvar</Button>
             </>}>
             <form class="form" onSubmit={(e) => { e.preventDefault(); saveQuota(); }}>
               <Field label="Espaço em MiB" hint="Vazio usa o padrão do servidor. 0 é sem limite. Conta o que há nos cofres de que a conta é dona.">
-                <input inputmode="numeric" value={quotaText()} onInput={(e) => setQuotaText(e.currentTarget.value)}
-                  aria-invalid={!quotaValid()} autofocus />
+                <input inputmode="numeric" value={quotaText()} onInput={(e) => setQuotaText(e.currentTarget.value)} autofocus />
               </Field>
             </form>
           </Modal>

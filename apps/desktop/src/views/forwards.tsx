@@ -4,6 +4,7 @@ import { byId, itemsOf, toast } from "../store";
 import { withHostKeyCheck } from "../terminal";
 import { Badge, Button, Empty, Field, Icon, Modal, confirmAction } from "../ui";
 import { EditorFooter, ItemSelect, VaultSelect, defaultVault, labelOf, removeItem, saveEntity } from "./common";
+import { PORT_MSG, invalid, isPort } from "../validate";
 
 type ForwardItem = Item<{ type: "port_forward"; data: PortForward }>;
 
@@ -86,8 +87,16 @@ function ForwardEditor(props: { item: ForwardItem | null; onClose: () => void })
   const [vault, setVault] = createSignal(props.item?.vault_id ?? defaultVault());
   const set = <K extends keyof PortForward>(k: K, v: PortForward[K]) => setD({ ...d(), [k]: v });
   const save = async () => {
-    if (!d().host_id) return toast("Escolha o host.", "error");
-    if (await saveEntity(props.item, vault(), { type: "port_forward", data: d() })) props.onClose();
+    const f = d();
+    if (!f.host_id) return invalid("Host SSH", "Host SSH: escolha o host por onde o túnel passa.");
+    if (!f.bind_address.trim()) return invalid(f.kind === "remote" ? "Endereço no servidor" : "Endereço local", "Endereço: não pode ficar em branco (use 127.0.0.1 para só este computador).");
+    if (!isPort(f.bind_port)) return invalid("Porta", PORT_MSG);
+    if (f.kind !== "dynamic") {
+      if (!f.dest_host.trim()) return invalid("Destino", "Destino: não pode ficar em branco.");
+      if (!isPort(f.dest_port)) return invalid("Porta de destino", PORT_MSG);
+    }
+    const data = { ...f, bind_address: f.bind_address.trim(), dest_host: f.dest_host.trim() };
+    if (await saveEntity(props.item, vault(), { type: "port_forward", data })) props.onClose();
   };
   return (
     <Modal title={props.item ? "Editar regra" : "Nova regra"} onClose={props.onClose}
@@ -105,12 +114,12 @@ function ForwardEditor(props: { item: ForwardItem | null; onClose: () => void })
         <Field label="Host SSH"><ItemSelect kind="host" value={d().host_id} onChange={(v) => set("host_id", v)} none="Escolha…" /></Field>
         <div class="form-row">
           <Field label={d().kind === "remote" ? "Endereço no servidor" : "Endereço local"}><input value={d().bind_address} onInput={(e) => set("bind_address", e.currentTarget.value)} /></Field>
-          <Field label="Porta"><input type="number" value={d().bind_port} onInput={(e) => set("bind_port", Number(e.currentTarget.value))} /></Field>
+          <Field label="Porta"><input type="number" value={d().bind_port} onInput={(e) => set("bind_port", e.currentTarget.value === "" ? NaN : Number(e.currentTarget.value))} /></Field>
         </div>
         <Show when={d().kind !== "dynamic"}>
           <div class="form-row">
             <Field label="Destino"><input value={d().dest_host} onInput={(e) => set("dest_host", e.currentTarget.value)} /></Field>
-            <Field label="Porta de destino"><input type="number" value={d().dest_port} onInput={(e) => set("dest_port", Number(e.currentTarget.value))} /></Field>
+            <Field label="Porta de destino"><input type="number" value={d().dest_port} onInput={(e) => set("dest_port", e.currentTarget.value === "" ? NaN : Number(e.currentTarget.value))} /></Field>
           </div>
         </Show>
         <Field label="Cofre"><VaultSelect value={vault()} onChange={setVault} /></Field>

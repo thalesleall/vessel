@@ -4,6 +4,7 @@ import { copy, refreshStatus, setStatus, status, toast } from "./store";
 import { themePref, setThemePref, type ThemePref } from "./theme";
 import { transition } from "./motion";
 import { Button, Field, Icon, confirmAction } from "./ui";
+import { invalid, looksLikeEmail, looksLikeUrl } from "./validate";
 
 /** The app icon, the same drawing as `logo.svg` (the source of every icon file). Shown at 32 px, the
  * size its pixel grid was drawn for, so every edge stays sharp. */
@@ -31,10 +32,12 @@ export function Brand(props: { sub?: string }) {
 
 const MIN_PASSWORD = 10;
 
-function passwordProblem(password: string, confirm: string): string | null {
-  if (password.length < MIN_PASSWORD) return `Use uma senha com pelo menos ${MIN_PASSWORD} caracteres.`;
-  if (password !== confirm) return "As senhas não coincidem.";
-  return null;
+/** A new password and its confirmation; the problem, if any, is shown at its field. */
+function newPasswordOk(label: string, password: string, confirm: string): boolean {
+  if (!password) return invalid(label, `${label}: não pode ficar em branco.`);
+  if (password.length < MIN_PASSWORD) return invalid(label, `Senha curta demais: use pelo menos ${MIN_PASSWORD} caracteres.`);
+  if (password !== confirm) return invalid("Confirme a senha", "As senhas não coincidem.");
+  return true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -149,8 +152,7 @@ function LocalSetup(props: { onBack: () => void }) {
 
   const submit = async (e: Event) => {
     e.preventDefault();
-    const problem = passwordProblem(password(), password2());
-    if (problem) return setError(problem);
+    if (!newPasswordOk("Senha", password(), password2())) return;
     setError(null);
     setBusy(true);
     try {
@@ -170,7 +172,7 @@ function LocalSetup(props: { onBack: () => void }) {
           <div class="steps" aria-label="Passo 1 de 2"><span class="on" /><span /></div>
           <h1>Crie sua senha</h1>
           <p class="lead">Ela desbloqueia o Vessel e protege tudo o que fica salvo neste computador.</p>
-          <form class="form" onSubmit={submit}>
+          <form class="form" noValidate onSubmit={submit}>
             <Field label="Seu nome" hint="Opcional. Aparece no canto da tela.">
               <input value={name()} onInput={(e) => setName(e.currentTarget.value)} placeholder="Ex.: Ana…" autofocus />
             </Field>
@@ -219,9 +221,11 @@ export function Connect(props: { onBack?: () => void }) {
 
   const checkServer = async () => {
     setError(null);
+    if (!url().trim()) return invalid("Endereço do servidor", "Endereço do servidor: não pode ficar em branco.");
+    if (!looksLikeUrl(url())) return invalid("Endereço do servidor", "Endereço inválido: comece com https:// (ex.: https://vessel.minhaempresa.com).");
     setBusy(true);
     try {
-      const i = await api.serverInfo(url());
+      const i = await api.serverInfo(url().trim());
       setInfo(i);
       if (i.first_user) setMode("signup");
     } catch (e) {
@@ -234,10 +238,14 @@ export function Connect(props: { onBack?: () => void }) {
   const submit = async (e: Event) => {
     e.preventDefault();
     setError(null);
-    if (mode() !== "login") {
-      const problem = passwordProblem(password(), password2());
-      if (problem) return setError(problem);
-    }
+    if (!email().trim()) return invalid("E-mail", "E-mail: não pode ficar em branco.");
+    if (!looksLikeEmail(email())) return invalid("E-mail", "E-mail inválido: confira o endereço.");
+    if (mode() === "recover" && !recoveryKey().trim()) return invalid("Chave de recuperação", "Chave de recuperação: não pode ficar em branco.");
+    if (mode() === "login") {
+      if (!password()) return invalid("Senha", "Senha: não pode ficar em branco.");
+    } else if (!newPasswordOk("Nova senha", password(), password2())) return;
+    if (mode() === "signup" && info()!.first_user && !invite().trim()) return invalid("Código de instalação", "Código de instalação: não pode ficar em branco. Ele aparece no log do agente ao iniciar.");
+    if (mode() === "signup" && info()!.signups !== "open" && !info()!.first_user && !invite().trim()) return invalid("Código de convite", "Código de convite: não pode ficar em branco. Este servidor só aceita contas novas com convite.");
     setBusy(true);
     try {
       if (mode() === "login") {
@@ -267,12 +275,12 @@ export function Connect(props: { onBack?: () => void }) {
           <p class="lead">Hosts, chaves e snippets sincronizam criptografados pelo seu agente Vessel. Os terminais continuam rodando aqui.</p>
 
           <Show when={info()} fallback={
-            <form class="form" onSubmit={(e) => { e.preventDefault(); checkServer(); }}>
+            <form class="form" noValidate onSubmit={(e) => { e.preventDefault(); checkServer(); }}>
               <Field label="Endereço do servidor" hint="Ex.: https://vessel.minhaempresa.com">
                 <input type="url" placeholder="https://" value={url()} onInput={(e) => setUrl(e.currentTarget.value)} autofocus />
               </Field>
               <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
-              <Button type="submit" variant="primary" busy={busy()} disabled={!url().trim()}>Verificar servidor</Button>
+              <Button type="submit" variant="primary" busy={busy()}>Verificar servidor</Button>
             </form>
           }>
             <div class="form">
@@ -286,7 +294,7 @@ export function Connect(props: { onBack?: () => void }) {
                 <button role="tab" classList={{ on: mode() === "signup" }} onClick={() => setMode("signup")}>Criar conta</button>
                 <button role="tab" classList={{ on: mode() === "recover" }} onClick={() => setMode("recover")}>Esqueci a senha</button>
               </div>
-              <form class="form" onSubmit={submit}>
+              <form class="form" noValidate onSubmit={submit}>
                 <Field label="E-mail">
                   <input type="email" value={email()} onInput={(e) => setEmail(e.currentTarget.value)} autocomplete="username" required />
                 </Field>
@@ -355,6 +363,8 @@ export function RecoveryKeyBody(props: { value: string }) {
 
 export function RecoveryKeyScreen(props: { value: string; onDone: () => void; step?: number }) {
   const [saved, setSaved] = createSignal(false);
+  let box: HTMLInputElement | undefined;
+  const done = () => saved() ? props.onDone() : invalid(box ?? null, "Marque que guardou a chave de recuperação antes de continuar: sem ela, uma senha esquecida não tem volta.");
   return (
     <div class="auth-card" style={{ width: "min(500px, 100%)" }}>
       <Show when={props.step}><div class="steps" aria-label="Passo 2 de 2"><span class="on" /><span class="on" /></div></Show>
@@ -362,10 +372,10 @@ export function RecoveryKeyScreen(props: { value: string; onDone: () => void; st
       <p class="lead">É a única forma de voltar a entrar se você esquecer a senha.</p>
       <RecoveryKeyBody value={props.value} />
       <label class="check" style={{ margin: "14px 0 18px" }}>
-        <input type="checkbox" checked={saved()} onChange={(e) => setSaved(e.currentTarget.checked)} />
+        <input ref={box} type="checkbox" checked={saved()} onChange={(e) => setSaved(e.currentTarget.checked)} />
         Guardei a chave num gerenciador de senhas ou no papel
       </label>
-      <Button variant="primary" disabled={!saved()} onClick={props.onDone}>Começar a usar</Button>
+      <Button variant="primary" onClick={done}>Começar a usar</Button>
     </div>
   );
 }
@@ -383,6 +393,7 @@ export function Unlock() {
 
   const submit = async (e: Event) => {
     e.preventDefault();
+    if (!password()) return invalid("Senha", "Senha: não pode ficar em branco.");
     setBusy(true);
     setError(null);
     try {
@@ -414,12 +425,12 @@ export function Unlock() {
           <Brand sub={local() ? "Só neste computador" : status()?.server_url?.replace(/^https?:\/\//, "") ?? ""} />
           <h1>Desbloquear</h1>
           <p class="lead">{status()?.email}</p>
-          <form class="form" onSubmit={submit}>
+          <form class="form" noValidate onSubmit={submit}>
             <Field label="Senha">
               <input type="password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} autofocus autocomplete="current-password" />
             </Field>
             <Show when={error()}><div class="callout callout-danger" role="alert"><Icon name="alert" size={16} />{error()}</div></Show>
-            <Button type="submit" variant="primary" icon="lock" busy={busy()} disabled={!password()}>Desbloquear</Button>
+            <Button type="submit" variant="primary" icon="lock" busy={busy()}>Desbloquear</Button>
           </form>
           <div style={{ display: "flex", "justify-content": "space-between", "margin-top": "18px" }}>
             <Show when={local()} fallback={<span />}>
@@ -444,8 +455,8 @@ function LocalRecovery(props: { onBack: () => void }) {
 
   const submit = async (e: Event) => {
     e.preventDefault();
-    const problem = passwordProblem(password(), password2());
-    if (problem) return setError(problem);
+    if (!key().trim()) return invalid("Chave de recuperação", "Chave de recuperação: não pode ficar em branco.");
+    if (!newPasswordOk("Nova senha", password(), password2())) return;
     setBusy(true);
     setError(null);
     try {
@@ -463,7 +474,7 @@ function LocalRecovery(props: { onBack: () => void }) {
       <button class="auth-back" onClick={props.onBack}><Icon name="chevron-left" size={14} />Voltar</button>
       <h1>Criar uma senha nova</h1>
       <p class="lead">Use a chave de recuperação que você guardou quando começou a usar o Vessel.</p>
-      <form class="form" onSubmit={submit}>
+      <form class="form" noValidate onSubmit={submit}>
         <Field label="Chave de recuperação">
           <input class="mono" value={key()} onInput={(e) => setKey(e.currentTarget.value)} placeholder="XXXX-XXXX-…" autofocus required />
         </Field>

@@ -254,7 +254,7 @@ export function ConfirmHost() {
             <div class="code-block" style={{ "margin-top": "10px", "max-height": "260px", overflow: "auto" }}>{c().code}</div>
           </Show>
           <Show when={c().expect}>
-            <Field label={c().expectLabel ?? "Digite para confirmar"}>
+            <Field label={c().expectLabel ?? "Digite para confirmar"} hint={typed() !== "" && !matches() ? `Ainda não confere. Digite exatamente: ${c().expect}` : `O botão libera quando você digitar: ${c().expect}`}>
               <input class="mono" value={typed()} onInput={(e) => setTyped(e.currentTarget.value)} aria-invalid={typed() !== "" && !matches()} autofocus />
             </Field>
           </Show>
