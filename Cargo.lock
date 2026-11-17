@@ -6623,7 +6623,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vessel-agent"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "axum",
@@ -6644,7 +6644,7 @@ dependencies = [
 
 [[package]]
 name = "vessel-client"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -6665,7 +6665,7 @@ dependencies = [
 
 [[package]]
 name = "vessel-crypto"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "argon2 0.6.0",
  "chacha20poly1305",
@@ -6687,7 +6687,7 @@ dependencies = [
 
 [[package]]
 name = "vessel-desktop"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -6714,7 +6714,7 @@ dependencies = [
 
 [[package]]
 name = "vessel-dev"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "serde_json",
  "tokio",
@@ -6724,7 +6724,7 @@ dependencies = [
 
 [[package]]
 name = "vessel-mcp"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "reqwest",
  "serde_json",
@@ -6733,7 +6733,7 @@ dependencies = [
 
 [[package]]
 name = "vessel-model"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -6742,7 +6742,7 @@ dependencies = [
 
 [[package]]
 name = "vessel-protocol"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "base64 0.23.1",
  "serde",

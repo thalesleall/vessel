@@ -1,6 +1,6 @@
 [package]
 name = "vessel-dev"
-version = "0.1.5"
+version = "0.1.6"
 description = "Test helper: a scriptable second Vessel user for exercising sync and team sharing by hand."
 edition.workspace = true
 license.workspace = true
