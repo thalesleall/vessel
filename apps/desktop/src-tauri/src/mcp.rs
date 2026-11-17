@@ -260,7 +260,8 @@ WSL) or SSH sessions and run commands in them. Credentials (passwords, private k
 and cannot be set: reference existing identities and SSH keys by id (list_items kind=identity / ssh_key). Prefer \
 terminal_run for commands whose output you need; it waits until the output settles. Snippets the user allowed for agents \
 run on their own target with execute_snippet (see list_runnable_snippets), even when typing into terminals is \
-disabled. Ask the user before running \
+disabled. When the user allows it, aws_list_instances lists the AWS instances Vessel mapped and aws_open_session \
+opens a Session Manager shell on one, in a tab the user sees. Ask the user before running \
 destructive commands on remote servers.";
 
 fn summarize(args: &Value) -> String {
@@ -603,6 +604,24 @@ fn tool_definitions() -> Vec<Value> {
             true,
         ),
         tool(
+            "aws_list_instances",
+            "List AWS instances",
+            "AWS EC2 instances from the last mapping the user ran in Vessel (AWS screen), by profile and region, with their Session Manager status. Read from the local cache: it does not call AWS, and agents cannot start a mapping or sign in. Only works when the user allowed agents in the AWS screen.",
+            json!({ "search": { "type": "string", "description": "Optional filter on name or instance id." }, "online_only": { "type": "boolean", "default": false } }),
+            &[],
+            true,
+            false,
+        ),
+        tool(
+            "aws_open_session",
+            "Open AWS session",
+            "Open a Session Manager shell on an instance from aws_list_instances, in a terminal tab the user sees (and can close). Use terminal_run on the returned session to run commands. Only for instances online in Session Manager, and only when the user allowed agents in the AWS screen.",
+            json!({ "profile": { "type": "string" }, "region": { "type": "string" }, "instance_id": { "type": "string" } }),
+            &["profile", "region", "instance_id"],
+            false,
+            false,
+        ),
+        tool(
             "list_port_forwards",
             "List port forwards",
             "Saved port forwarding rules and which are running.",
@@ -754,6 +773,14 @@ fn arg_u64(args: &Value, key: &str, default: u64) -> u64 {
 
 fn err(e: impl Into<CmdError>) -> String {
     e.into().message
+}
+
+fn require_aws(state: &AppState) -> Result<(), String> {
+    if state.settings().aws_agents {
+        Ok(())
+    } else {
+        Err("AWS access is disabled for agents. The user can allow it in the Vessel app, AWS screen.".into())
+    }
 }
 
 async fn require_unlocked(state: &AppState) -> Result<(), String> {
@@ -1392,6 +1419,47 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                 })
                 .collect();
             Ok(json!({ "ok": record.status == crate::runs::RunStatus::Ok, "results": results }))
+        }
+        "aws_list_instances" => {
+            require_aws(state)?;
+            let inv = crate::aws::cached_inventory(state).await.map_err(err)?.unwrap_or_default();
+            let search = arg_str(args, "search").unwrap_or("").to_lowercase();
+            let online_only = args.get("online_only").and_then(Value::as_bool).unwrap_or(false);
+            let mut out = Vec::new();
+            'all: for p in &inv.profiles {
+                for r in &p.regions {
+                    for i in &r.instances {
+                        if online_only && i.ssm != crate::aws::inventory::SsmStatus::Online {
+                            continue;
+                        }
+                        if !search.is_empty() && !i.name.to_lowercase().contains(&search) && !i.id.to_lowercase().contains(&search) {
+                            continue;
+                        }
+                        out.push(json!({
+                            "profile": p.profile, "account": p.account, "region": r.region,
+                            "instance_id": i.id, "name": i.name, "state": i.state, "ssm": i.ssm,
+                            "platform": i.platform, "private_ip": i.private_ip,
+                        }));
+                        if out.len() >= 500 {
+                            break 'all;
+                        }
+                    }
+                }
+            }
+            Ok(json!({ "mapped_at": inv.mapped_at, "partial": inv.partial, "instances": out }))
+        }
+        "aws_open_session" => {
+            require_aws(state)?;
+            let (profile, region, id) = (
+                arg_str(args, "profile").ok_or("profile is required")?,
+                arg_str(args, "region").ok_or("region is required")?,
+                arg_str(args, "instance_id").ok_or("instance_id is required")?,
+            );
+            let info = crate::aws::open_session(state, profile, region, id, 120, 32, true).await.map_err(err)?;
+            wait_for_quiet(state, info.id, 0, Duration::from_millis(800), Duration::from_secs(10)).await;
+            let session = state.terms.get(&info.id).ok_or("session closed")?;
+            let banner = tail(&to_plain_text(&session.output_since(0)), 2000);
+            Ok(json!({ "session": info, "output": banner }))
         }
         "list_port_forwards" => {
             let rules = state

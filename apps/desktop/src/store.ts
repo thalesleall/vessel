@@ -16,7 +16,7 @@ export const [lastSync, setLastSync] = createSignal<number | null>(null);
 
 /** Which top-level tab is shown: "home" or a terminal session id. */
 const [activeTab, setActiveTabNow] = createSignal<string>("home");
-export type Section = "hosts" | "terminals" | "keychain" | "snippets" | "forwards" | "vaults" | "agents" | "settings";
+export type Section = "hosts" | "terminals" | "keychain" | "snippets" | "forwards" | "aws" | "vaults" | "agents" | "settings";
 const [section, setSectionNow] = createSignal<Section>("hosts");
 export { activeTab, section };
 

@@ -109,6 +109,23 @@ O que roda e quando tem teste automático: `cargo test -p vessel-desktop --lib` 
 7. Em **Configurações → Segundo plano**, ligue "Iniciar com o Windows" e confira a entrada em Gerenciador de Tarefas → Inicializar. Desligue de novo.
 8. Faça o agendamento falhar (`exit 1`). *Esperado:* uma notificação do Windows.
 
+## 3.6 AWS
+
+O leitor de `~/.aws/config`, a classificação dos erros, o limitador e o mapeamento contra um servidor falso de EC2 e SSM (paginação, 5.000 instâncias, throttling com retry, `AccessDenied`, cancelamento) têm teste automático: `cargo test -p vessel-desktop --lib aws`.
+
+Para conferir à mão, com uma conta real: um perfil mestre, perfis de assume role a partir dele, instâncias online e offline no Session Manager.
+
+1. Abra **AWS**. *Esperado:* o perfil mestre aparece com a contagem dos perfis que dependem dele. Sem o AWS CLI ou o Session Manager Plugin, um aviso diz o que instalar e como conferir.
+2. Com a sessão expirada, *esperado:* "Sessão expirada". Clique em **Entrar na AWS**, conclua o login na aba que abre e clique no ícone de verificar. *Esperado:* "Sessão ativa".
+3. **Mapear tudo** e confirme. *Esperado:* a barra mostra conta e região e o tempo; as regiões aparecem conforme terminam. **Cancelar** no meio para e guarda o que chegou ("incompleto").
+4. Num perfil sem permissão de `ssm:DescribeInstanceInformation`, *esperado:* "Falta a permissão ssm:DescribeInstanceInformation" naquela região, e as outras mapeadas. Num papel que o mestre não pode assumir, *esperado:* "Sem permissão para assumir …" no perfil.
+5. Busque por nome, ID ou IP, e use "Só online no SSM" e os filtros de perfil e região.
+6. Fixe uma instância. *Esperado:* ela aparece em **Favoritas**, no topo.
+7. Numa instância online, **Terminal**. *Esperado:* uma aba com o shell da instância. Numa offline ou não gerenciada, as ações ficam desativadas, e passar o mouse diz por quê.
+8. **SSH** com uma chave do cofre e o usuário da AMI (`ec2-user`, `ubuntu`). *Esperado:* na primeira vez, pede para confirmar a impressão digital; depois, conecta direto.
+9. **Porta** 5432 com o host de um banco que a instância alcança. *Esperado:* uma aba com o redirecionamento; `localhost:5432` responde; fechar a aba encerra.
+10. Ligue "Agentes de IA podem listar estas instâncias…" e peça ao assistente "liste minhas instâncias AWS" e "abra uma sessão na instância X". *Esperado:* funciona, a aba é marcada IA; com a opção desligada, as duas são recusadas.
+
 ## 4. Port forwarding (todos pelo host Bastion)
 
 | Tipo | Regra | Como conferir | Esperado |

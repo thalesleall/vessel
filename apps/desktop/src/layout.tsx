@@ -18,6 +18,17 @@ import { ForwardsView } from "./views/forwards";
 import { VaultsView } from "./views/vaults";
 import { AgentsView } from "./views/agents";
 import { SettingsView } from "./views/settings";
+import { AwsView } from "./views/aws";
+import type { SessionInfo } from "./api";
+
+/** Tooltip of a tab: where the session goes. */
+function tabHint(k: SessionInfo["kind"]): string {
+  switch (k.kind) {
+    case "ssh": return k.address;
+    case "aws": return `${k.instance_id} · ${k.profile} · ${k.region}`;
+    default: return k.shell;
+  }
+}
 
 const nav: { id: Section; label: string; icon: string }[] = [
   { id: "hosts", label: "Hosts", icon: "server" },
@@ -25,6 +36,7 @@ const nav: { id: Section; label: string; icon: string }[] = [
   { id: "keychain", label: "Chaves", icon: "key" },
   { id: "snippets", label: "Snippets", icon: "code" },
   { id: "forwards", label: "Redirecionamentos", icon: "route" },
+  { id: "aws", label: "AWS", icon: "cloud" },
   { id: "vaults", label: "Cofres e times", icon: "vault" },
   { id: "agents", label: "Agentes de IA", icon: "bot" },
   { id: "settings", label: "Configurações", icon: "settings" },
@@ -137,8 +149,8 @@ function TabBar() {
                 <div class="tab" classList={{ active: activeTab() === id }} onClick={() => setActiveTab(id)} role="tab" data-tab={id}
                   aria-selected={activeTab() === id} tabIndex={activeTab() === id ? 0 : -1} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setActiveTab(id)}>
                   <span class="state" classList={{ dead: !s().alive }} />
-                  <ShellIcon ssh={s().kind.kind === "ssh"} shell={s().kind.kind === "local" ? (s().kind as { shell_kind?: Shell }).shell_kind : null} size={16} />
-                  <span class="title" title={s().kind.kind === "ssh" ? (s().kind as { address: string }).address : (s().kind as { shell: string }).shell}>{s().title}</span>
+                  <ShellIcon ssh={s().kind.kind === "ssh"} aws={s().kind.kind === "aws"} shell={s().kind.kind === "local" ? (s().kind as { shell_kind?: Shell }).shell_kind : null} size={16} />
+                  <span class="title" title={tabHint(s().kind)}>{s().title}</span>
                   <Show when={s().by_agent}><span class="agent-flag" title="Aberto por um agente de IA">IA</span></Show>
                   <button class="close" onClick={(e) => close(id, e)} title="Fechar" aria-label={`Fechar ${s().title}`}><Icon name="x" size={13} /></button>
                 </div>
@@ -274,6 +286,7 @@ export function Workspace() {
                 <Match when={section() === "keychain"}><KeychainView /></Match>
                 <Match when={section() === "snippets"}><SnippetsView /></Match>
                 <Match when={section() === "forwards"}><ForwardsView /></Match>
+                <Match when={section() === "aws"}><AwsView /></Match>
                 <Match when={section() === "vaults"}><VaultsView /></Match>
                 <Match when={section() === "agents"}><AgentsView /></Match>
                 <Match when={section() === "settings"}><SettingsView /></Match>

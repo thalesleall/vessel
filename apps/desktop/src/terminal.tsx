@@ -79,13 +79,15 @@ export async function openShell(shell: Shell) {
   }
 }
 
-interface HostKeyQuestion { hostId: string; host: string; fingerprint: string; keyType: string; changed: boolean; expected?: string; borrowed?: string | null; onTrust?: () => void }
+interface HostKeyQuestion { hostId: string; host: string; fingerprint: string; keyType: string; changed: boolean; expected?: string; borrowed?: string | null; onTrust?: () => void;
+  /** The key is kept on this computer only (AWS instances), not in the synced vault. */
+  local?: boolean }
 const [hostKeyQuestion, setHostKeyQuestion] = createSignal<HostKeyQuestion | null>(null);
 const [connecting, setConnecting] = createSignal<string | null>(null);
 export { connecting };
 
 /** Runs an SSH action, asking the user to confirm unknown host keys. */
-export async function withHostKeyCheck(hostId: string, action: (trustNew: boolean) => Promise<void>) {
+export async function withHostKeyCheck(hostId: string, action: (trustNew: boolean) => Promise<void>, opts: { local?: boolean } = {}) {
   try {
     await action(false);
   } catch (e) {
@@ -93,11 +95,11 @@ export async function withHostKeyCheck(hostId: string, action: (trustNew: boolea
     const d = (e as { details?: Record<string, string> }).details ?? {};
     if (code === "host_key_unknown") {
       setHostKeyQuestion({
-        hostId, host: d.host, fingerprint: d.fingerprint, keyType: d.key_type, changed: false, borrowed: d.borrowed,
+        hostId, host: d.host, fingerprint: d.fingerprint, keyType: d.key_type, changed: false, borrowed: d.borrowed, local: opts.local,
         onTrust: () => action(true).catch((err) => toast(errorMessage(err), "error")),
       });
     } else if (code === "host_key_changed") {
-      setHostKeyQuestion({ hostId, host: d.host, fingerprint: d.actual, keyType: d.key_type, changed: true, expected: d.expected });
+      setHostKeyQuestion({ hostId, host: d.host, fingerprint: d.actual, keyType: d.key_type, changed: true, expected: d.expected, local: opts.local });
     } else {
       toast(errorMessage(e), "error");
     }
@@ -129,11 +131,13 @@ export function HostKeyPrompt() {
           <div class="form">
             <Show when={q().changed} fallback={
               <p class="confirm-text">É a primeira conexão com <b>{q().host}</b>. Compare a impressão digital abaixo com a do servidor
-                (<span class="mono">ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</span>) antes de confiar. Ela será salva e sincronizada.</p>
+                (<span class="mono">ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</span>) antes de confiar. {q().local ? "Ela fica salva só neste computador." : "Ela será salva e sincronizada."}</p>
             }>
               <div class="callout callout-danger"><Icon name="alert" />
                 <span>A identidade de <b>{q().host}</b> não é a que você salvou. Pode ser uma reinstalação, ou alguém interceptando a conexão.
-                  Se a mudança for esperada, apague o host conhecido em Chaves → Hosts conhecidos e conecte de novo.</span>
+                  {q().local
+                    ? "Se a mudança for esperada, use “Esquecer chave do host” na instância, no menu AWS, e conecte de novo."
+                    : "Se a mudança for esperada, apague o host conhecido em Chaves → Hosts conhecidos e conecte de novo."}</span>
               </div>
               <div class="field"><span class="field-label">Esperada</span><div class="code-block">{q().expected}</div></div>
             </Show>

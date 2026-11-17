@@ -401,6 +401,20 @@ async fn authenticate(handle: &mut Handle<Client>, hop: &Hop) -> CmdResult<()> {
 /// Connects through every hop. `trust_new` accepts unknown host keys (they are returned in
 /// `new_host_keys` to be saved); a changed key is always refused.
 pub async fn connect(plan: &Plan, trust_new: bool) -> CmdResult<Connection> {
+    connect_via(plan, trust_new, None).await
+}
+
+/// A byte stream an SSH connection can ride on (a TCP socket, a jump channel, a tunnel process
+/// such as Session Manager).
+pub trait Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static> Io for T {}
+
+/// Like [`connect`], with the first hop reached through `first` instead of a TCP connection.
+pub async fn connect_via(
+    plan: &Plan,
+    trust_new: bool,
+    mut first: Option<Box<dyn Io>>,
+) -> CmdResult<Connection> {
     let remote_forwards = Arc::new(Mutex::new(HashMap::new()));
     let mut handles: Vec<Handle<Client>> = Vec::new();
     let mut new_host_keys = Vec::new();
@@ -413,8 +427,19 @@ pub async fn connect(plan: &Plan, trust_new: bool) -> CmdResult<Connection> {
             seen: seen.clone(),
             remote_forwards: remote_forwards.clone(),
         };
-        let result = match handles.last() {
-            None => tokio::time::timeout(
+        let result = match (handles.last(), first.take()) {
+            (None, Some(io)) => tokio::time::timeout(
+                Duration::from_secs(45),
+                client::connect_stream(config(hop), io, handler),
+            )
+            .await
+            .map_err(|_| {
+                CmdError::new(
+                    "timeout",
+                    format!("Tempo esgotado ao conectar em {}.", hop.label),
+                )
+            })?,
+            (None, None) => tokio::time::timeout(
                 Duration::from_secs(15),
                 client::connect(config(hop), (hop.address.as_str(), hop.port), handler),
             )
@@ -425,7 +450,7 @@ pub async fn connect(plan: &Plan, trust_new: bool) -> CmdResult<Connection> {
                     format!("Tempo esgotado ao conectar em {}.", hop.host_port()),
                 )
             })?,
-            Some(previous) => {
+            (Some(previous), _) => {
                 let channel = previous
                     .channel_open_direct_tcpip(
                         hop.address.clone(),

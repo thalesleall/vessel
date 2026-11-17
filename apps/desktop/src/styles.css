@@ -593,3 +593,36 @@ input[aria-invalid="true"] + .field-hint { color: var(--danger); }
 .swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; outline: 1px solid var(--line); cursor: pointer; color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
 .swatch.on { border-color: var(--surface); outline: 2px solid var(--text); }
 .pick:focus-visible, .swatch:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ AWS screen */
+.aws-muted { color: var(--text-3); font-size: 12.5px; }
+.aws-top { display: grid; gap: 12px; }
+.aws-top-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.aws-top-row .field { min-width: 220px; }
+.aws-top-row .spacer { flex: 1; }
+.aws-session { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.aws-session-bad { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.aws-progress { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--text-2); }
+.aws-bar { flex: 1; max-width: 360px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.aws-bar > div { height: 100%; background: var(--structure); transition: width .3s var(--ease-out); }
+.aws-agents { font-size: 13px; }
+.aws-tool { margin-bottom: 12px; }
+.aws-tool-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.aws-tool-row .mono { word-break: break-all; }
+.aws-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 22px 0 12px; }
+.aws-filters .aws-search { flex: 1; min-width: 220px; width: auto; }
+.aws-filters select { width: auto; }
+.aws-profile { margin-top: 18px; }
+.aws-profile-head, .aws-region-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aws-profile-head .spacer { flex: 1; }
+.aws-region { margin: 8px 0 0 22px; }
+.aws-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 2px; color: var(--text); cursor: pointer; font: inherit; }
+.aws-toggle .name { font-weight: 600; }
+.aws-list { margin-top: 6px; }
+.aws-row .meta .sub { white-space: nowrap; }
+.aws-actions { display: flex; gap: 6px; }
+.aws-star.on { color: var(--signal-text, var(--structure-text)); }
+.aws-error { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 0 22px; font-size: 12.5px; color: var(--danger); }
+.aws-hint { color: var(--text-2); }
+.aws-region-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 14px; max-height: 50vh; overflow: auto; }
+@media (max-width: 900px) { .aws-actions .btn span { display: none; } }

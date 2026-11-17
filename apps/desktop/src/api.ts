@@ -235,11 +235,55 @@ export interface ConflictView {
 export interface SessionInfo {
   id: Uuid;
   title: string;
-  kind: { kind: "local"; profile_id: Uuid | null; shell: string; shell_kind?: Shell } | { kind: "ssh"; host_id: Uuid; address: string };
+  kind: { kind: "local"; profile_id: Uuid | null; shell: string; shell_kind?: Shell }
+    | { kind: "ssh"; host_id: Uuid; address: string }
+    | { kind: "aws"; instance_id: string; profile: string; region: string; mode: "shell" | "ssh" | "port_forward" };
   alive: boolean;
   created_at: number;
   by_agent: boolean;
 }
+
+// -- AWS (local only: the CLI profiles of this computer and the last mapping) -------------------
+
+export interface AwsProfile {
+  name: string;
+  region: string | null;
+  role_arn: string | null;
+  source_profile: string | null;
+  credential_source: string | null;
+  sign_in: "sso" | "login" | "process" | "keys" | null;
+  account: string | null;
+  dependents: string[];
+  master: string;
+  problem: string | null;
+}
+export type AwsErrorKind = "cli_missing" | "session_expired" | "assume_role_denied" | "access_denied" | "throttled"
+  | "region_disabled" | "network" | "cancelled" | "other";
+export interface AwsError { kind: AwsErrorKind; message: string }
+export type SsmStatus = "online" | "offline" | "unmanaged";
+export interface AwsInstance { id: string; name: string; state: string; ssm: SsmStatus; platform: string; private_ip: string }
+export interface AwsRegionNode { region: string; instances: AwsInstance[]; error: AwsError | null }
+export interface AwsProfileNode { profile: string; account: string | null; role_arn: string | null; regions: AwsRegionNode[]; error: AwsError | null }
+export interface AwsInventory { mapped_at: number; profiles: AwsProfileNode[]; partial: boolean }
+export interface AwsFavorite { profile: string; region: string; id: string }
+export interface AwsSettings { master: string | null; regions: Record<string, string[]>; favorites: AwsFavorite[] }
+export interface AwsTools { cli: string | null; cli_version: string | null; plugin: string | null; plugin_version: string | null }
+export interface AwsOverview {
+  tools: AwsTools;
+  config_path: string | null;
+  config_error: string | null;
+  profiles: AwsProfile[];
+  master: string | null;
+  settings: AwsSettings;
+  mapped_at: number | null;
+  partial: boolean;
+  instance_count: number;
+  mapping: boolean;
+  agents_allowed: boolean;
+}
+export interface AwsProgress { accounts_done: number; accounts_total: number; regions_done: number; regions_total: number; elapsed_ms: number }
+/** "Mapear tudo" over every profile, instead of one master and its dependents. */
+export const AWS_ALL = "*";
 
 export interface DetectedShell { label: string; shell: Shell; program: string }
 export interface ForwardStatus { rule_id: Uuid; label: string; description: string; running: boolean; error: string | null }
@@ -331,6 +375,22 @@ export const api = {
     invoke<SessionInfo>("open_local", { profileId: opts.profileId ?? null, shell: opts.shell ?? null, cols, rows, confirmed: opts.confirmed ?? null }),
   openSsh: (hostId: Uuid, cols: number, rows: number, trustNew = false) =>
     invoke<SessionInfo>("open_ssh", { hostId, cols, rows, trustNew }),
+  awsOverview: (refreshTools = false) => invoke<AwsOverview>("aws_overview", { refreshTools }),
+  awsSessionStatus: (profile: string) => invoke<{ active: boolean; error: AwsError | null }>("aws_session_status", { profile }),
+  awsLogin: (profile: string, cols: number, rows: number) => invoke<SessionInfo>("aws_login", { profile, cols, rows }),
+  awsMap: (opts: { master?: string; profile?: string; region?: string }) =>
+    invoke<void>("aws_map", { master: opts.master ?? null, profile: opts.profile ?? null, region: opts.region ?? null }),
+  awsCancel: () => invoke<boolean>("aws_cancel"),
+  awsInventory: () => invoke<AwsInventory | null>("aws_inventory"),
+  awsSaveSettings: (settings: AwsSettings) => invoke<AwsSettings>("aws_save_settings", { settings }),
+  awsSetAgents: (allowed: boolean) => invoke<boolean>("aws_set_agents", { allowed }),
+  awsOpenSession: (profile: string, region: string, instanceId: string, cols: number, rows: number) =>
+    invoke<SessionInfo>("aws_open_session", { profile, region, instanceId, cols, rows }),
+  awsPortForward: (a: { profile: string; region: string; instanceId: string; remotePort: number; localPort: number; remoteHost: string | null }, cols: number, rows: number) =>
+    invoke<SessionInfo>("aws_port_forward", { ...a, cols, rows }),
+  awsSsh: (a: { profile: string; region: string; instanceId: string; username: string; identityId: Uuid | null; sshKeyId: Uuid | null }, cols: number, rows: number, trustNew = false) =>
+    invoke<SessionInfo>("aws_ssh", { ...a, cols, rows, trustNew }),
+  awsForgetHostKey: (instanceId: string) => invoke<boolean>("aws_forget_host_key", { instanceId }),
   terminals: () => invoke<SessionInfo[]>("terminals"),
   attach: (id: Uuid, onData: (bytes: Uint8Array) => void) => {
     const channel = new Channel<ArrayBuffer>();

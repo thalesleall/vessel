@@ -33,6 +33,9 @@ pub struct LocalSettings {
     pub close_to_tray: bool,
     /// Do not lock after inactivity while snippets are scheduled. Off: the user accepts the risk.
     pub keep_unlocked_for_schedules: bool,
+    /// Let agents list the mapped AWS instances and open Session Manager sessions. Off until the
+    /// user turns it on in the AWS screen.
+    pub aws_agents: bool,
 }
 
 impl Default for LocalSettings {
@@ -48,6 +51,7 @@ impl Default for LocalSettings {
             schedules_paused: false,
             close_to_tray: true,
             keep_unlocked_for_schedules: false,
+            aws_agents: false,
         }
     }
 }
@@ -78,6 +82,7 @@ pub struct AppState {
     pub activity: Arc<Mutex<VecDeque<Activity>>>,
     pub runs: Arc<Runs>,
     pub scheduler: Arc<SchedulerState>,
+    pub aws: Arc<crate::aws::AwsState>,
 }
 
 impl AppState {

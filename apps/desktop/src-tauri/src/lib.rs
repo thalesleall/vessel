@@ -1,5 +1,6 @@
 //! Vessel desktop app: Tauri backend.
 
+mod aws;
 mod background;
 mod commands;
 mod cron;
@@ -59,6 +60,7 @@ pub fn run() {
                 activity: Arc::default(),
                 runs: Arc::default(),
                 scheduler: Arc::default(),
+                aws: Arc::default(),
             };
             runs::clean_tmp(&state.data_dir);
             background::spawn(state.clone());
@@ -71,6 +73,18 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            aws::aws_overview,
+            aws::aws_session_status,
+            aws::aws_login,
+            aws::aws_map,
+            aws::aws_cancel,
+            aws::aws_inventory,
+            aws::aws_save_settings,
+            aws::aws_set_agents,
+            aws::aws_open_session,
+            aws::aws_port_forward,
+            aws::aws_ssh,
+            aws::aws_forget_host_key,
             commands::status,
             commands::local_settings,
             commands::server_info,

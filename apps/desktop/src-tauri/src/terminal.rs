@@ -33,6 +33,14 @@ pub enum SessionKind {
         host_id: Uuid,
         address: String,
     },
+    /// A Session Manager session (shell, SSH or port forward) to an AWS instance.
+    Aws {
+        instance_id: String,
+        profile: String,
+        region: String,
+        /// `shell`, `ssh` or `port_forward`.
+        mode: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize)]

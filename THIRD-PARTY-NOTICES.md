@@ -21,6 +21,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [alloc-stdlib](https://github.com/dropbox/rust-alloc-no-stdlib) | 0.3.0 | BSD-3-Clause |
 | [android_system_properties](https://github.com/nical/android_system_properties) | 0.1.6 | MIT OR Apache-2.0 |
 | [anyhow](https://github.com/dtolnay/anyhow) | 1.0.104 | MIT OR Apache-2.0 |
+| [arc-swap](https://github.com/vorner/arc-swap) | 1.9.5 | MIT OR Apache-2.0 |
 | [argon2](https://github.com/RustCrypto/password-hashes/tree/master/argon2) | 0.5.3 | MIT OR Apache-2.0 |
 | [argon2](https://github.com/RustCrypto/password-hashes) | 0.6.0 | MIT OR Apache-2.0 |
 | [async-broadcast](https://github.com/smol-rs/async-broadcast) | 0.7.2 | MIT OR Apache-2.0 |
@@ -37,8 +38,26 @@ through the `@fontsource` packages listed under JavaScript.
 | [atk-sys](https://github.com/gtk-rs/gtk3-rs) | 0.18.2 | MIT |
 | [atomic-waker](https://github.com/smol-rs/atomic-waker) | 1.1.2 | Apache-2.0 OR MIT |
 | [autocfg](https://github.com/cuviper/autocfg) | 1.5.1 | Apache-2.0 OR MIT |
+| [aws-credential-types](https://github.com/smithy-lang/smithy-rs) | 1.3.1 | Apache-2.0 |
 | [aws-lc-rs](https://github.com/aws/aws-lc-rs) | 1.19.0 | ISC AND (Apache-2.0 OR ISC) |
 | [aws-lc-sys](https://github.com/aws/aws-lc-rs) | 0.47.0 | ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) |
+| [aws-runtime](https://github.com/smithy-lang/smithy-rs) | 1.10.4 | Apache-2.0 |
+| [aws-sdk-ec2](https://github.com/awslabs/aws-sdk-rust) | 1.281.0 | Apache-2.0 |
+| [aws-sdk-ssm](https://github.com/awslabs/aws-sdk-rust) | 1.137.0 | Apache-2.0 |
+| [aws-sigv4](https://github.com/smithy-lang/smithy-rs) | 1.6.5 | Apache-2.0 |
+| [aws-smithy-async](https://github.com/smithy-lang/smithy-rs) | 1.3.1 | Apache-2.0 |
+| [aws-smithy-http](https://github.com/smithy-lang/smithy-rs) | 0.64.3 | Apache-2.0 |
+| [aws-smithy-http-client](https://github.com/smithy-lang/smithy-rs) | 1.5.3 | Apache-2.0 |
+| [aws-smithy-json](https://github.com/smithy-lang/smithy-rs) | 0.65.1 | Apache-2.0 |
+| [aws-smithy-observability](https://github.com/awslabs/smithy-rs) | 0.3.1 | Apache-2.0 |
+| [aws-smithy-query](https://github.com/smithy-lang/smithy-rs) | 0.64.0 | Apache-2.0 |
+| [aws-smithy-runtime](https://github.com/smithy-lang/smithy-rs) | 1.16.4 | Apache-2.0 |
+| [aws-smithy-runtime-api](https://github.com/smithy-lang/smithy-rs) | 1.22.0 | Apache-2.0 |
+| [aws-smithy-runtime-api-macros](https://github.com/smithy-lang/smithy-rs) | 1.2.0 | Apache-2.0 |
+| [aws-smithy-schema](https://github.com/smithy-lang/smithy-rs) | 1.2.0 | Apache-2.0 |
+| [aws-smithy-types](https://github.com/smithy-lang/smithy-rs) | 1.9.4 | Apache-2.0 |
+| [aws-smithy-xml](https://github.com/smithy-lang/smithy-rs) | 0.64.1 | Apache-2.0 |
+| [aws-types](https://github.com/smithy-lang/smithy-rs) | 1.7.0 | Apache-2.0 |
 | [axum](https://github.com/tokio-rs/axum) | 0.8.9 | MIT |
 | [axum-core](https://github.com/tokio-rs/axum) | 0.5.6 | MIT |
 | [base16ct](https://github.com/RustCrypto/formats/tree/master/base16ct) | 0.2.0 | Apache-2.0 OR MIT |
@@ -46,6 +65,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [base64](https://github.com/marshallpierce/rust-base64) | 0.21.7 | MIT OR Apache-2.0 |
 | [base64](https://github.com/marshallpierce/rust-base64) | 0.22.1 | MIT OR Apache-2.0 |
 | [base64](https://github.com/marshallpierce/rust-base64) | 0.23.1 | MIT OR Apache-2.0 |
+| [base64-simd](https://github.com/Nugine/simd) | 0.8.0 | MIT |
 | [base64ct](https://github.com/RustCrypto/formats) | 1.8.3 | Apache-2.0 OR MIT |
 | [bcrypt-pbkdf](https://github.com/RustCrypto/password-hashes) | 0.11.0 | MIT OR Apache-2.0 |
 | [bit-set](https://github.com/contain-rs/bit-vec) | 0.11.1 | Apache-2.0 OR MIT |
@@ -69,6 +89,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [bytemuck](https://github.com/Lokathor/bytemuck) | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
 | [byteorder](https://github.com/BurntSushi/byteorder) | 1.5.0 | Unlicense OR MIT |
 | [bytes](https://github.com/tokio-rs/bytes) | 1.12.1 | MIT |
+| [bytes-utils](https://github.com/vorner/bytes-utils) | 0.1.4 | Apache-2.0/MIT |
 | [cairo-rs](https://github.com/gtk-rs/gtk-rs-core) | 0.18.5 | MIT |
 | [cairo-sys-rs](https://github.com/gtk-rs/gtk-rs-core) | 0.18.2 | MIT |
 | [camino](https://github.com/camino-rs/camino) | 1.2.6 | MIT OR Apache-2.0 |
@@ -155,6 +176,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [ed25519](https://github.com/RustCrypto/signatures) | 3.0.0 | Apache-2.0 OR MIT |
 | [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek) | 2.2.0 | BSD-3-Clause |
 | [ed25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek) | 3.0.0 | BSD-3-Clause |
+| [either](https://github.com/rayon-rs/either) | 1.19.0 | MIT OR Apache-2.0 |
 | [elliptic-curve](https://github.com/RustCrypto/traits/tree/master/elliptic-curve) | 0.13.8 | Apache-2.0 OR MIT |
 | [elliptic-curve](https://github.com/RustCrypto/traits) | 0.14.3 | Apache-2.0 OR MIT |
 | [embed_plist](https://github.com/nvzqz/embed-plist-rs) | 1.2.2 | MIT OR Apache-2.0 |
@@ -223,6 +245,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [gtk](https://github.com/gtk-rs/gtk3-rs) | 0.18.2 | MIT |
 | [gtk-sys](https://github.com/gtk-rs/gtk3-rs) | 0.18.2 | MIT |
 | [gtk3-macros](https://github.com/gtk-rs/gtk3-rs) | 0.18.2 | MIT |
+| [h2](https://github.com/hyperium/h2) | 0.4.20 | MIT |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.12.3 | MIT OR Apache-2.0 |
 | [hashbrown](https://github.com/rust-lang/hashbrown) | 0.17.1 | MIT OR Apache-2.0 |
 | [hashlink](https://github.com/djc/hashlink) | 0.12.2 | MIT OR Apache-2.0 |
@@ -355,6 +378,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [option-ext](https://github.com/soc/option-ext.git) | 0.2.0 | MPL-2.0 |
 | [ordered-stream](https://github.com/danieldg/ordered-stream) | 0.2.0 | MIT OR Apache-2.0 |
 | [osakit](https://github.com/mdevils/rust-osakit) | 0.3.1 | MIT OR Apache-2.0 |
+| [outref](https://github.com/Nugine/outref) | 0.5.2 | MIT |
 | [p256](https://github.com/RustCrypto/elliptic-curves) | 0.14.0 | Apache-2.0 OR MIT |
 | [p384](https://github.com/RustCrypto/elliptic-curves) | 0.14.0 | Apache-2.0 OR MIT |
 | [p521](https://github.com/RustCrypto/elliptic-curves) | 0.14.0 | Apache-2.0 OR MIT |
@@ -429,6 +453,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [ref-cast-impl](https://github.com/dtolnay/ref-cast) | 1.0.27 | MIT OR Apache-2.0 |
 | [regex](https://github.com/rust-lang/regex) | 1.13.1 | MIT OR Apache-2.0 |
 | [regex-automata](https://github.com/rust-lang/regex) | 0.4.18 | MIT OR Apache-2.0 |
+| [regex-lite](https://github.com/rust-lang/regex) | 0.1.9 | MIT OR Apache-2.0 |
 | [regex-syntax](https://github.com/rust-lang/regex) | 0.8.11 | MIT OR Apache-2.0 |
 | [reqwest](https://github.com/seanmonstar/reqwest) | 0.13.5 | MIT OR Apache-2.0 |
 | [rfc6979](https://github.com/RustCrypto/signatures) | 0.6.0 | Apache-2.0 OR MIT |
@@ -601,6 +626,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [universal-hash](https://github.com/RustCrypto/traits) | 0.6.1 | MIT OR Apache-2.0 |
 | [untrusted](https://github.com/briansmith/untrusted) | 0.9.0 | ISC |
 | [url](https://github.com/servo/rust-url) | 2.5.8 | MIT OR Apache-2.0 |
+| [urlencoding](https://github.com/kornelski/rust_urlencoding) | 2.1.3 | MIT |
 | [urlpattern](https://github.com/denoland/rust-urlpattern) | 0.6.0 | MIT |
 | [utf_types](https://github.com/hsivonen/utf_types) | 1.0.0 | Apache-2.0 OR MIT |
 | [utf8_iter](https://github.com/hsivonen/utf8_iter) | 1.1.0 | Apache-2.0 OR MIT |
@@ -610,6 +636,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [version_check](https://github.com/SergioBenitez/version_check) | 0.9.5 | MIT/Apache-2.0 |
 | [version-compare](https://gitlab.com/timvisee/version-compare) | 0.2.1 | MIT |
 | [voprf](https://github.com/facebook/voprf/) | 0.5.0 | MIT |
+| [vsimd](https://github.com/Nugine/simd) | 0.8.0 | MIT |
 | [vswhom](https://github.com/nabijaczleweli/vswhom.rs) | 0.1.0 | MIT |
 | [vswhom-sys](https://github.com/nabijaczleweli/vswhom-sys.rs) | 0.1.3 | MIT |
 | [vte](https://github.com/alacritty/vte) | 0.14.1 | Apache-2.0 OR MIT |
@@ -685,6 +712,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [x11-dl](https://github.com/AltF02/x11-rs.git) | 2.21.0 | MIT |
 | [x25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/x25519-dalek) | 3.0.0 | BSD-3-Clause |
 | [xattr](https://github.com/Stebalien/xattr) | 1.7.0 | MIT OR Apache-2.0 |
+| [xmlparser](https://github.com/RazrFalcon/xmlparser) | 0.13.6 | MIT/Apache-2.0 |
 | [yoke](https://github.com/unicode-org/icu4x) | 0.8.4 | Unicode-3.0 |
 | [yoke-derive](https://github.com/unicode-org/icu4x) | 0.8.4 | Unicode-3.0 |
 | [zbus](https://github.com/z-galaxy/zbus/) | 5.19.0 | MIT |
@@ -732,17 +760,17 @@ through the `@fontsource` packages listed under JavaScript.
 
 Rust:
 
-- MIT OR Apache-2.0: 298
-- MIT: 149
+- MIT OR Apache-2.0: 301
+- MIT: 154
 - Apache-2.0 OR MIT: 108
-- MIT/Apache-2.0: 26
+- MIT/Apache-2.0: 27
+- Apache-2.0: 24
 - Zlib OR Apache-2.0 OR MIT: 18
 - Unicode-3.0: 18
 - Unlicense OR MIT: 9
 - BSD-3-Clause: 8
 - MPL-2.0: 7
-- Apache-2.0: 6
-- Apache-2.0/MIT: 5
+- Apache-2.0/MIT: 6
 - Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT: 5
 - Apache-2.0 OR ISC OR MIT: 3
 - ISC: 3

@@ -86,7 +86,8 @@ const distroColors: [RegExp, string][] = [
   [/alma|rocky|centos|rhel|red ?hat/i, "#b0272d"],
 ];
 
-function badgeFor(shell: ShellLike, ssh: boolean): { bg: string; glyph?: string; icon?: string; title: string } {
+function badgeFor(shell: ShellLike, ssh: boolean, aws = false): { bg: string; glyph?: string; icon?: string; title: string } {
+  if (aws) return { bg: "#c46a00", icon: "cloud", title: "AWS (Session Manager)" };
   if (ssh) return { bg: "#14806b", icon: "server", title: "SSH" };
   switch (shell?.kind) {
     case "pwsh": return { bg: "#2f6fd6", glyph: ">_", title: "PowerShell" };
@@ -103,9 +104,9 @@ function badgeFor(shell: ShellLike, ssh: boolean): { bg: string; glyph?: string;
 }
 
 /** Colored tile identifying a shell type (or SSH). */
-export function ShellIcon(props: { shell?: ShellLike; ssh?: boolean; size?: number; color?: string }) {
+export function ShellIcon(props: { shell?: ShellLike; ssh?: boolean; aws?: boolean; size?: number; color?: string }) {
   const size = () => props.size ?? 18;
-  const b = () => badgeFor(props.shell, !!props.ssh);
+  const b = () => badgeFor(props.shell, !!props.ssh, !!props.aws);
   return (
     <span class="shell-icon" title={b().title} aria-hidden="true"
       style={{ width: `${size()}px`, height: `${size()}px`, background: props.color || b().bg, "border-radius": `${Math.round(size() * 0.26)}px` }}>
