@@ -253,12 +253,31 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
     const q = hostFilter().toLowerCase();
     return hosts().filter((h) => !q || `${h.entity.data.label} ${h.entity.data.address}`.toLowerCase().includes(q));
   };
+  // The last choice of each target kind, so switching chips back and forth keeps it.
+  const remembered: Partial<Record<SnippetTarget["kind"], SnippetTarget>> = { [d().target.kind]: d().target };
+  const pickTarget = (kind: SnippetTarget["kind"]) => {
+    if (d().target.kind === kind) return;
+    remembered[d().target.kind] = d().target;
+    setTarget(remembered[kind] ?? (kind === "none" ? { kind: "none" }
+      : kind === "local" ? { kind: "local", shell: localShells()[0]?.shell ?? { kind: "pwsh" } }
+      : { kind: "hosts", host_ids: [] }));
+  };
+  const [busy, setBusy] = createSignal(false);
+  const notice = (title: string, message: string) => confirmAction({ title, message, confirm: "Entendi", danger: false });
   const save = async () => {
-    if (!d().script.trim()) return;
-    if (d().target.kind === "hosts" && hostIds().length === 0) {
-      await confirmAction({ title: "Escolha os hosts", message: "Marque pelo menos um host, ou escolha outro destino.", confirm: "Entendi", danger: false });
+    if (busy()) return;
+    if (!d().script.trim()) {
+      await notice("Falta o script", "Escreva o comando que o snippet vai rodar antes de salvar.");
       return;
     }
+    if (d().target.kind === "hosts" && hostIds().length === 0) {
+      await notice("Escolha os hosts", "Marque pelo menos um host, ou escolha outro destino.");
+      return;
+    }
+    setBusy(true);
+    try { await persist(); } finally { setBusy(false); }
+  };
+  const persist = async () => {
     const data: Snippet = {
       ...d(),
       label: d().label.trim() || d().script.split("\n")[0].slice(0, 40),
@@ -271,7 +290,7 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
   };
   return (
     <Modal title={props.item ? "Editar snippet" : "Novo snippet"} onClose={props.onClose} wide
-      footer={<EditorFooter onCancel={props.onClose} onSave={save}
+      footer={<EditorFooter busy={busy()} onCancel={props.onClose} onSave={save}
         onDelete={props.item ? async () => { await removeItem(props.item!, "o snippet"); props.onClose(); } : undefined} />}>
       <div class="form">
         <div class="form-row">
@@ -283,11 +302,11 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
         <fieldset class="fieldset">
           <legend class="field-label">Onde roda</legend>
           <div class="chips" role="radiogroup" aria-label="Destino">
-            <button class="chip" role="radio" aria-checked={d().target.kind === "none"} classList={{ on: d().target.kind === "none" }} onClick={() => setTarget({ kind: "none" })}><Icon name="terminal" size={14} />Colar num terminal</button>
+            <button class="chip" role="radio" aria-checked={d().target.kind === "none"} classList={{ on: d().target.kind === "none" }} onClick={() => pickTarget("none")}><Icon name="terminal" size={14} />Colar num terminal</button>
             <button class="chip" role="radio" aria-checked={d().target.kind === "local"} classList={{ on: d().target.kind === "local" }}
-              onClick={() => d().target.kind !== "local" && setTarget({ kind: "local", shell: localShells()[0]?.shell ?? { kind: "pwsh" } })}><Icon name="monitor" size={14} />Este computador</button>
+              onClick={() => pickTarget("local")}><Icon name="monitor" size={14} />Este computador</button>
             <button class="chip" role="radio" aria-checked={d().target.kind === "hosts"} classList={{ on: d().target.kind === "hosts" }}
-              onClick={() => d().target.kind !== "hosts" && setTarget({ kind: "hosts", host_ids: [] })}><Icon name="server" size={14} />Hosts SSH</button>
+              onClick={() => pickTarget("hosts")}><Icon name="server" size={14} />Hosts SSH</button>
           </div>
           <Show when={d().target.kind === "none"}>
             <p class="field-hint">O snippet é digitado num terminal que você escolhe. Para rodar com um clique ou agendar, escolha um destino.</p>

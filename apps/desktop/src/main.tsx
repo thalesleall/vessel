@@ -9,6 +9,19 @@ import "./styles.css";
 import "./theme";
 import { installSliders } from "./motion";
 import App from "./App";
+import { errorMessage } from "./api";
+import { toast } from "./store";
+
+// An action that fails outside a handled path must never look like "nothing happened".
+window.addEventListener("unhandledrejection", (e) => {
+  console.error(e.reason);
+  toast(`Algo deu errado: ${errorMessage(e.reason)}`, "error");
+});
+window.addEventListener("error", (e) => {
+  if (!e.error) return; // resource loads and ResizeObserver notices carry no error object
+  console.error(e.error);
+  toast(`Algo deu errado: ${errorMessage(e.error)}`, "error");
+});
 
 // For screens and dialogs added after load: honor `autofocus` (the browser only does it on page
 // load), and keep autofill suggestions off fields that are not sign-in fields.

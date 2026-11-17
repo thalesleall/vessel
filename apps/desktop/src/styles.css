@@ -540,7 +540,7 @@ input[aria-invalid="true"] + .field-hint { color: var(--danger); }
 }
 .run-btn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .run-btn.primary { background: var(--structure); border-color: var(--structure); color: var(--on-structure); }
-.run-btn.primary:hover:not(:disabled) { background: var(--structure-hover); }
+.run-btn.primary:hover:not(:disabled) { background: var(--structure-hover); color: var(--on-structure); }
 .run-btn:disabled { opacity: .45; cursor: default; }
 .run-btn:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .run-btn:active:not(:disabled) { transform: translateY(1px) scale(.97); }
