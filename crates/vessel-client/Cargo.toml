@@ -1,6 +1,6 @@
 [package]
 name = "vessel-client"
-version = "0.1.7"
+version = "0.1.8"
 description = "Vessel client core: account, local encrypted store, sync engine, vault sharing."
 edition.workspace = true
 license.workspace = true

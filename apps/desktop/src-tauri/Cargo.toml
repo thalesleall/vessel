@@ -1,6 +1,6 @@
 [package]
 name = "vessel-desktop"
-version = "0.1.7"
+version = "0.1.8"
 description = "Vessel desktop app: local terminals, SSH and encrypted self-hosted sync."
 edition.workspace = true
 license.workspace = true
