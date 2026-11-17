@@ -122,6 +122,8 @@ impl Drop for RunningGuard<'_> {
 /// One resolved destination, built while the vault is unlocked.
 enum Job {
     Local(Shell),
+    /// An AWS instance, through Session Manager Run Command (destination kept on this device).
+    Aws(crate::aws::snippets::AwsSnippetTarget),
     Ssh {
         label: String,
         plan: Result<ssh::Plan, String>,
@@ -148,6 +150,7 @@ pub async fn run(
     origin: RunOrigin,
     confirmed: bool,
 ) -> CmdResult<RunRecord> {
+    let tools = state.aws.tools(false).await;
     let (snippet, jobs, target) = {
         let vessel = state.vessel.lock().await;
         if !vessel.status().unlocked {
@@ -160,7 +163,14 @@ pub async fn run(
             return Err(CmdError::new("not_found", "Snippet não encontrado."));
         };
         let personal = vessel.personal_vault().ok() == Some(item.vault_id);
-        check_allowed(&snippet, origin, personal, confirmed)?;
+        let aws = crate::aws::snippets::target_of(&vessel, snippet_id);
+        check_allowed(&snippet, aws.is_some(), origin, personal, confirmed)?;
+        if aws.is_some() && origin == RunOrigin::Agent && !state.settings().aws_agents {
+            return Err(CmdError::new(
+                "agent_not_allowed",
+                "This snippet runs on an AWS instance, and AWS access is disabled for agents. The user can allow it in the Vessel app, AWS screen.",
+            ));
+        }
         let items = vessel.items(None)?;
         let host_label = |id: Uuid| {
             items
@@ -175,10 +185,11 @@ pub async fn run(
                 })
                 .unwrap_or_else(|| "host removido".into())
         };
-        let jobs: Vec<Job> = match &snippet.target {
-            SnippetTarget::None => unreachable!("checked above"),
-            SnippetTarget::Local { shell } => vec![Job::Local(shell.clone())],
-            SnippetTarget::Hosts { host_ids } => host_ids
+        let jobs: Vec<Job> = match (&aws, &snippet.target) {
+            (Some(t), _) => vec![Job::Aws(t.clone())],
+            (None, SnippetTarget::None) => unreachable!("checked above"),
+            (None, SnippetTarget::Local { shell }) => vec![Job::Local(shell.clone())],
+            (None, SnippetTarget::Hosts { host_ids }) => host_ids
                 .iter()
                 .map(|id| Job::Ssh {
                     label: host_label(*id),
@@ -186,7 +197,10 @@ pub async fn run(
                 })
                 .collect(),
         };
-        let target = target_label(&snippet.target, host_label);
+        let target = match &aws {
+            Some(t) => format!("{} (AWS)", t.label),
+            None => target_label(&snippet.target, host_label),
+        };
         (snippet, jobs, target)
     };
 
@@ -219,12 +233,14 @@ pub async fn run(
     let cap = (OUTPUT_CAP / jobs.len().max(1) / 2).max(4 * 1024);
     let tmp = state.data_dir.join("run-tmp");
     let script = snippet.script.clone();
+    let http = state.aws.http();
     let futures = jobs.into_iter().map(|job| {
-        let (script, tmp) = (script.clone(), tmp.clone());
+        let (script, tmp, tools, http) = (script.clone(), tmp.clone(), tools.clone(), http.clone());
         async move {
             match job {
                 Job::Local(shell) => run_local(&shell, &script, timeout, cap, &tmp).await,
                 Job::Ssh { label, plan } => run_ssh(label, plan, &script, timeout, cap).await,
+                Job::Aws(t) => crate::aws::snippets::run(&tools, http, &t, &script, timeout, cap).await,
             }
         }
     });
@@ -242,11 +258,12 @@ pub async fn run(
 
 fn check_allowed(
     snippet: &Snippet,
+    aws_target: bool,
     origin: RunOrigin,
     personal: bool,
     confirmed: bool,
 ) -> CmdResult<()> {
-    if snippet.target == SnippetTarget::None {
+    if snippet.target == SnippetTarget::None && !aws_target {
         return Err(CmdError::new(
             "no_target",
             "Este snippet não tem destino: use \"Colar no terminal\" ou escolha um destino ao editá-lo.",
@@ -627,30 +644,30 @@ mod tests {
     fn who_may_run_what() {
         let local = snippet(SnippetTarget::Local { shell: Shell::Cmd });
         assert_eq!(
-            check_allowed(&snippet(SnippetTarget::None), RunOrigin::Manual, true, true)
+            check_allowed(&snippet(SnippetTarget::None), false, RunOrigin::Manual, true, true)
                 .unwrap_err()
                 .code,
             "no_target"
         );
-        assert!(check_allowed(&local, RunOrigin::Manual, true, false).is_ok());
-        assert!(check_allowed(&local, RunOrigin::Scheduled, true, false).is_ok());
+        assert!(check_allowed(&local, false, RunOrigin::Manual, true, false).is_ok());
+        assert!(check_allowed(&local, false, RunOrigin::Scheduled, true, false).is_ok());
         // Shared vaults: by hand only, after seeing the script.
         assert_eq!(
-            check_allowed(&local, RunOrigin::Manual, false, false)
+            check_allowed(&local, false, RunOrigin::Manual, false, false)
                 .unwrap_err()
                 .code,
             "confirm_snippet"
         );
-        assert!(check_allowed(&local, RunOrigin::Manual, false, true).is_ok());
+        assert!(check_allowed(&local, false, RunOrigin::Manual, false, true).is_ok());
         assert_eq!(
-            check_allowed(&local, RunOrigin::Scheduled, false, true)
+            check_allowed(&local, false, RunOrigin::Scheduled, false, true)
                 .unwrap_err()
                 .code,
             "not_personal"
         );
         // Agents: only snippets the user allowed, and never one that asks first.
         assert_eq!(
-            check_allowed(&local, RunOrigin::Agent, true, false)
+            check_allowed(&local, false, RunOrigin::Agent, true, false)
                 .unwrap_err()
                 .code,
             "agent_not_allowed"
@@ -659,9 +676,9 @@ mod tests {
             agent_allowed: true,
             ..local.clone()
         };
-        assert!(check_allowed(&allowed, RunOrigin::Agent, true, false).is_ok());
+        assert!(check_allowed(&allowed, false, RunOrigin::Agent, true, false).is_ok());
         assert_eq!(
-            check_allowed(&allowed, RunOrigin::Agent, false, false)
+            check_allowed(&allowed, false, RunOrigin::Agent, false, false)
                 .unwrap_err()
                 .code,
             "not_personal"
@@ -671,13 +688,13 @@ mod tests {
             ..allowed
         };
         assert_eq!(
-            check_allowed(&asks, RunOrigin::Agent, true, true)
+            check_allowed(&asks, false, RunOrigin::Agent, true, true)
                 .unwrap_err()
                 .code,
             "agent_not_allowed"
         );
         assert_eq!(
-            check_allowed(&asks, RunOrigin::Manual, true, false)
+            check_allowed(&asks, false, RunOrigin::Manual, true, false)
                 .unwrap_err()
                 .code,
             "confirm_snippet"

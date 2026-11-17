@@ -1,5 +1,5 @@
 import { api, blank, errorCode, errorMessage, shellLabel, type Item, type RunRecord, type Snippet } from "./api";
-import { byId, lastRuns, personalVaultId, setActiveTab, setLastRuns, toast } from "./store";
+import { awsSnippetTargets, byId, lastRuns, personalVaultId, setActiveTab, setLastRuns, toast } from "./store";
 import { confirmAction } from "./ui";
 
 export type SnippetItem = Item<{ type: "snippet"; data: Snippet }>;
@@ -8,6 +8,9 @@ export type SnippetItem = Item<{ type: "snippet"; data: Snippet }>;
 export function snippetData(item: SnippetItem): Snippet {
   const d = { ...blank.snippet(), ...item.entity.data };
   if (!d.target?.kind) d.target = { kind: "none" };
+  // An AWS destination set on this computer wins over what the vault says.
+  const aws = awsSnippetTargets()[item.id];
+  if (aws) d.target = { kind: "aws", ...aws };
   return d;
 }
 
@@ -15,6 +18,7 @@ export function snippetData(item: SnippetItem): Snippet {
 export function targetText(s: Snippet): string {
   switch (s.target.kind) {
     case "none": return "Colar no terminal";
+    case "aws": return `${s.target.label} (AWS)`;
     case "local": return shellLabel(s.target.shell);
     case "hosts": {
       const ids = s.target.host_ids;

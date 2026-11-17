@@ -41,6 +41,7 @@ Você escolhe onde os dados ficam: só no seu computador, ou num servidor de sin
 - **AWS:** lê os perfis do AWS CLI deste computador, mapeia as instâncias EC2 de todas as contas e regiões do perfil mestre (sob demanda, com progresso e cancelamento) e abre, a um clique, terminal, SSH ou redirecionamento de porta pelo Session Manager.
   - O Vessel não lê nem guarda chaves da AWS: o próprio AWS CLI resolve SSO, `aws login`, assume role e MFA.
   - O mapeamento fica cifrado e só neste computador; nada da AWS vai para o cofre sincronizado.
+  - Um snippet pode rodar numa instância favorita (Run Command do Session Manager). A instância escolhida fica só neste computador; nos outros, o snippet aparece sem destino.
 - **Sincronização:** em tempo real entre computadores. Conflitos de edição são mesclados campo a campo.
 - **Migração sem perda:** dá para começar só no computador e conectar um servidor depois, ou o contrário. Antes de migrar, o app faz um backup criptografado.
 - **Temas claro e escuro**, bloqueio automático por inatividade e chave de recuperação para quando esquecer a senha.

@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
 import { invalid, intIn } from "../validate";
-import { api, blank, errorMessage, shellLabel, type RunRecord, type Schedule, type Shell, type Snippet, type SnippetTarget } from "../api";
-import { attempt, itemsOf, lastRuns, personalVaultId, scheduler, sessions, tryAction, vaultName, vaults } from "../store";
+import { api, blank, errorMessage, shellLabel, type RunRecord, type Schedule, type Shell, type AwsSnippetTarget, type Snippet, type SnippetTarget } from "../api";
+import { attempt, awsSnippetTargets, itemsOf, lastRuns, personalVaultId, refreshAwsSnippetTargets, scheduler, sessions, tryAction, vaultName, vaults } from "../store";
 import { pasteSnippet, runSnippet, snippetData, targetText, type SnippetItem } from "../snippetrun";
 import { Badge, Button, Empty, Field, Icon, Modal, ShellIcon, confirmAction, timeAgo } from "../ui";
 import { EditorFooter, VaultSelect, defaultVault, removeItem, saveEntity, splitTags } from "./common";
@@ -70,6 +70,7 @@ export function SnippetsView() {
                   <div class="avatar snippet-icon">
                     <Show when={running(s.id)} fallback={
                       d().target.kind === "local" ? <ShellIcon shell={(d().target as { shell: Shell }).shell} size={22} />
+                        : d().target.kind === "aws" ? <ShellIcon aws size={22} />
                         : <Icon name={d().target.kind === "hosts" ? "server" : "code"} size={18} />
                     }><span class="spinner" /></Show>
                   </div>
@@ -248,6 +249,21 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
   const set = <K extends keyof Snippet>(k: K, v: Snippet[K]) => setD({ ...d(), [k]: v });
   const setTarget = (t: SnippetTarget) => set("target", t);
   const localShells = createMemo(() => (shells() ?? []).filter((s) => s.shell.kind !== "custom"));
+  // AWS instances to run on: the favorites of the AWS screen that the last mapping found.
+  const [awsOverview] = createResource(() => api.awsOverview().catch(() => null));
+  const [awsInventory] = createResource(() => api.awsInventory().catch(() => null));
+  const awsChoices = createMemo<AwsSnippetTarget[]>(() => {
+    const favs = awsOverview()?.settings.favorites ?? [];
+    const inv = awsInventory();
+    return favs.flatMap((f) => {
+      const i = inv?.profiles.find((p) => p.profile === f.profile)?.regions.find((r) => r.region === f.region)?.instances.find((x) => x.id === f.id);
+      return i && i.ssm !== "unmanaged"
+        ? [{ profile: f.profile, region: f.region, instance_id: i.id, label: i.name || i.id, windows: /windows/i.test(i.platform) }]
+        : [];
+    });
+  });
+  const awsKey = (t: AwsSnippetTarget) => `${t.profile}|${t.region}|${t.instance_id}`;
+  const awsTargetOf = (t: AwsSnippetTarget): SnippetTarget => ({ kind: "aws", ...t });
   const hostIds = () => (d().target.kind === "hosts" ? (d().target as { host_ids: string[] }).host_ids : []);
   const shellKey = (s: Shell) => JSON.stringify(s);
   const filteredHosts = () => {
@@ -261,6 +277,7 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
     remembered[d().target.kind] = d().target;
     setTarget(remembered[kind] ?? (kind === "none" ? { kind: "none" }
       : kind === "local" ? { kind: "local", shell: localShells()[0]?.shell ?? { kind: "pwsh" } }
+      : kind === "aws" ? (awsChoices()[0] ? awsTargetOf(awsChoices()[0]) : { kind: "aws", profile: "", region: "", instance_id: "", label: "", windows: false })
       : { kind: "hosts", host_ids: [] }));
   };
   const [busy, setBusy] = createSignal(false);
@@ -268,6 +285,7 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
     if (busy()) return;
     if (!d().script.trim()) return invalid("Script", "Script: não pode ficar em branco. Escreva o comando que o snippet vai rodar.");
     if (d().target.kind === "hosts" && hostIds().length === 0) return invalid("Hosts", "Marque pelo menos um host, ou escolha outro destino.");
+    if (d().target.kind === "aws" && !(d().target as AwsSnippetTarget).instance_id) return invalid("Instância", "Escolha uma instância favorita, ou outro destino.");
     if (d().target.kind !== "none" && intIn(d().timeout_secs, 1, 21_600) === null) {
       return invalid("Tempo máximo", "Tempo máximo inválido: use um número inteiro de 1 a 21600 segundos.");
     }
@@ -297,7 +315,16 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
       schedules: d().schedules.map((s) => ({ ...s, cron: s.cron.trim() })),
       agent_allowed: d().agent_allowed && d().target.kind !== "none" && !d().confirm,
     };
-    if (await saveEntity(props.item, vault(), { type: "snippet", data })) props.onClose();
+    // The AWS instance stays on this computer: the vault only learns "no destination".
+    const aws = d().target.kind === "aws" ? (d().target as AwsSnippetTarget) : null;
+    if (aws) data.target = { kind: "none" };
+    const hadAws = !!(props.item && awsSnippetTargets()[props.item.id]);
+    const after = async (id: string) => {
+      if (aws) await api.awsSetSnippetTarget(id, { profile: aws.profile, region: aws.region, instanceId: aws.instance_id });
+      else if (hadAws) await api.awsSetSnippetTarget(id, null);
+      await refreshAwsSnippetTargets();
+    };
+    if (await saveEntity(props.item, vault(), { type: "snippet", data }, after)) props.onClose();
   };
   return (
     <Modal title={props.item ? "Editar snippet" : "Novo snippet"} onClose={props.onClose} wide
@@ -318,7 +345,22 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
               onClick={() => pickTarget("local")}><Icon name="monitor" size={14} />Este computador</button>
             <button class="chip" role="radio" aria-checked={d().target.kind === "hosts"} classList={{ on: d().target.kind === "hosts" }}
               onClick={() => pickTarget("hosts")}><Icon name="server" size={14} />Hosts SSH</button>
+            <Show when={awsChoices().length || d().target.kind === "aws"}>
+              <button class="chip" role="radio" aria-checked={d().target.kind === "aws"} classList={{ on: d().target.kind === "aws" }}
+                onClick={() => pickTarget("aws")}><Icon name="cloud" size={14} />Instância AWS</button>
+            </Show>
           </div>
+          <Show when={d().target.kind === "aws"}>
+            <Field label="Instância" hint="Roda pelo Session Manager (Run Command), com o perfil da AWS deste computador. A escolha da instância fica só neste computador: nos outros, o snippet aparece sem destino.">
+              <select value={awsKey(d().target as AwsSnippetTarget)} onChange={(e) => { const c = awsChoices().find((x) => awsKey(x) === e.currentTarget.value); if (c) setTarget(awsTargetOf(c)); }}>
+                <Show when={!(d().target as AwsSnippetTarget).instance_id}><option value="">Escolha…</option></Show>
+                <For each={awsChoices()}>{(c) => <option value={awsKey(c)}>{c.label} · {c.instance_id} · {c.profile} · {c.region}</option>}</For>
+                <Show when={(d().target as AwsSnippetTarget).instance_id && !awsChoices().some((c) => awsKey(c) === awsKey(d().target as AwsSnippetTarget))}>
+                  <option value={awsKey(d().target as AwsSnippetTarget)}>{(d().target as AwsSnippetTarget).label} (não está nas favoritas)</option>
+                </Show>
+              </select>
+            </Field>
+          </Show>
           <Show when={d().target.kind === "none"}>
             <p class="field-hint">O snippet é digitado num terminal que você escolhe. Para rodar com um clique ou agendar, escolha um destino.</p>
           </Show>

@@ -1,6 +1,6 @@
 import { createMemo, createSignal } from "solid-js";
 import { transition } from "./motion";
-import { api, errorMessage, on, type Item, type Kind, type RunRecord, type SchedulerStatus, type SessionInfo, type Settings, type Status, type SyncReport, type UpdateStatus, type VaultView } from "./api";
+import { api, errorMessage, on, type AwsSnippetTarget, type Item, type Kind, type RunRecord, type SchedulerStatus, type SessionInfo, type Settings, type Status, type SyncReport, type UpdateStatus, type VaultView } from "./api";
 
 // ---------------------------------------------------------------------------------------------
 // App-wide state
@@ -82,6 +82,13 @@ export async function refreshData() {
     toast(errorMessage(e), "error");
   }
   refreshSnippetRuns();
+  void refreshAwsSnippetTargets();
+}
+
+/** AWS instances snippets run on, by snippet id. Kept on this computer only. */
+export const [awsSnippetTargets, setAwsSnippetTargets] = createSignal<Record<string, AwsSnippetTarget>>({});
+export async function refreshAwsSnippetTargets() {
+  try { setAwsSnippetTargets(await api.awsSnippetTargets()); } catch { /* locked: kept as is */ }
 }
 
 // ---------------------------------------------------------------------------------------------

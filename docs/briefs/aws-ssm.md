@@ -1,6 +1,6 @@
 # Brief: menu AWS (inventário e acesso via SSM)
 
-Status: implementado, exceto favoritos como destino de snippets (veja "Ainda não feito" no fim).
+Status: implementado.
 
 ## Objetivo
 Um menu novo, **AWS**, que:
@@ -102,6 +102,9 @@ Cada perfil ou região que falha mostra o erro no próprio nó da árvore, sem i
 - Outras nuvens.
 - Gerenciar instâncias (ligar, parar, criar).
 
+## Favoritos como destino de snippets
+- Decidido: o destino fica só neste dispositivo. No cofre o snippet continua "sem destino", e a instância escolhida fica cifrada no computador (decisão 4). Nos outros computadores, ele aparece para colar num terminal.
+- Roda com `send-command` (Run Command); não há modo "sessão".
+
 ## Ainda não feito
-- Favoritos como destino de snippets (`send-command` ou sessão). Um snippet sincroniza, e o destino apontaria para instâncias da AWS, o que levaria dados da AWS para o cofre sincronizado (decisão 4). Precisa de uma decisão: guardar esse destino só neste dispositivo, ou aceitar o ID da instância no cofre.
 - Teste manual com uma conta real (a lista está em `docs/TESTING.md`, §3.6).

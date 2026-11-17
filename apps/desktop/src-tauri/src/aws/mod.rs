@@ -5,6 +5,7 @@
 pub mod cli;
 pub mod config;
 pub mod inventory;
+pub mod snippets;
 
 #[cfg(test)]
 mod fake_tests;
@@ -47,7 +48,7 @@ impl AwsState {
         }
         t.clone().unwrap_or_default()
     }
-    fn http(&self) -> aws_sdk_ec2::config::SharedHttpClient {
+    pub fn http(&self) -> aws_sdk_ec2::config::SharedHttpClient {
         self.http.get_or_init(inventory::shared_http_client).clone()
     }
     pub fn is_mapping(&self) -> bool {

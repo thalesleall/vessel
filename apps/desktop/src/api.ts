@@ -116,10 +116,14 @@ export interface Group { label: string; parent_id: Uuid | null; identity_id: Uui
 export interface Identity { label: string; username: string; password: string | null; ssh_key_id: Uuid | null }
 export interface SshKey { label: string; private_key: string; public_key: string; passphrase: string | null; certificate: string | null }
 export interface KnownHost { host: string; key_type: string; fingerprint: string }
+/** An AWS instance a snippet runs on, kept on this computer only (never in the vault). */
+export interface AwsSnippetTarget { profile: string; region: string; instance_id: string; label: string; windows: boolean }
 export type SnippetTarget =
   | { kind: "none" }
   | { kind: "local"; shell: Shell }
-  | { kind: "hosts"; host_ids: Uuid[] };
+  | { kind: "hosts"; host_ids: Uuid[] }
+  /** Screen only: the vault keeps "none", and the instance lives on this device. */
+  | ({ kind: "aws" } & AwsSnippetTarget);
 export interface Schedule { cron: string; enabled: boolean }
 export interface Snippet {
   label: string;
@@ -391,6 +395,9 @@ export const api = {
   awsSsh: (a: { profile: string; region: string; instanceId: string; username: string; identityId: Uuid | null; sshKeyId: Uuid | null }, cols: number, rows: number, trustNew = false) =>
     invoke<SessionInfo>("aws_ssh", { ...a, cols, rows, trustNew }),
   awsForgetHostKey: (instanceId: string) => invoke<boolean>("aws_forget_host_key", { instanceId }),
+  awsSnippetTargets: () => invoke<Record<Uuid, AwsSnippetTarget>>("aws_snippet_targets"),
+  awsSetSnippetTarget: (snippetId: Uuid, t: { profile: string; region: string; instanceId: string } | null) =>
+    invoke<AwsSnippetTarget | null>("aws_set_snippet_target", { snippetId, profile: t?.profile ?? null, region: t?.region ?? null, instanceId: t?.instanceId ?? null }),
   terminals: () => invoke<SessionInfo[]>("terminals"),
   attach: (id: Uuid, onData: (bytes: Uint8Array) => void) => {
     const channel = new Channel<ArrayBuffer>();

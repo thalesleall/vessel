@@ -37,13 +37,14 @@ export function defaultVault(): string {
 }
 
 /** Saves an entity, moving it first when the vault changed. */
-export async function saveEntity(original: Item | null, vaultId: string, entity: Entity): Promise<boolean> {
+export async function saveEntity(original: Item | null, vaultId: string, entity: Entity, after?: (id: string) => Promise<unknown>): Promise<boolean> {
   const ok = await tryAction(async () => {
     let id = original?.id ?? null;
     if (original && original.vault_id !== vaultId) {
       id = await api.moveItem(original.vault_id, vaultId, original.id);
     }
-    await api.saveItem(vaultId, id, entity);
+    const saved = await api.saveItem(vaultId, id, entity);
+    if (after) await after(saved);
   }, "Salvo");
   await refreshData();
   return ok;

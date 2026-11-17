@@ -1364,6 +1364,8 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
         "list_runnable_snippets" => {
             let vessel = state.vessel.lock().await;
             let personal = vessel.personal_vault().ok();
+            // AWS destinations live on this device, and count only when agents may use AWS.
+            let aws = if state.settings().aws_agents { crate::aws::snippets::targets(&vessel) } else { Default::default() };
             let items = vessel.items(None).map_err(err)?;
             let host_label = |id: Uuid| {
                 items
@@ -1383,14 +1385,17 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                 .filter(|i| Some(i.vault_id) == personal)
                 .filter_map(|i| match &i.entity {
                     Entity::Snippet(s)
-                        if s.agent_allowed && !s.confirm && s.target != SnippetTarget::None =>
+                        if s.agent_allowed && !s.confirm && (s.target != SnippetTarget::None || aws.contains_key(&i.id)) =>
                     {
                         Some(json!({
                             "id": i.id,
                             "label": s.label,
                             "tags": s.tags,
                             "script": s.script,
-                            "target": crate::runs::target_label(&s.target, host_label),
+                            "target": match aws.get(&i.id) {
+                                Some(t) => format!("{} (AWS)", t.label),
+                                None => crate::runs::target_label(&s.target, host_label),
+                            },
                             "timeout_secs": s.timeout_secs,
                         }))
                     }

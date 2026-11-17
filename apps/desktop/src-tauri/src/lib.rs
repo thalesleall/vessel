@@ -85,6 +85,8 @@ pub fn run() {
             aws::aws_port_forward,
             aws::aws_ssh,
             aws::aws_forget_host_key,
+            aws::snippets::aws_snippet_targets,
+            aws::snippets::aws_set_snippet_target,
             commands::status,
             commands::local_settings,
             commands::server_info,

@@ -87,6 +87,7 @@ pub async fn status(state: &AppState) -> SchedulerStatus {
         vessel.items(Some(EntityKind::Snippet)),
     ) {
         let now = Local::now();
+        let aws = crate::aws::snippets::targets(&vessel);
         for item in items.iter().filter(|i| i.vault_id == personal) {
             let Entity::Snippet(s) = &item.entity else {
                 continue;
@@ -101,7 +102,7 @@ pub async fn status(state: &AppState) -> SchedulerStatus {
                     next: parsed
                         .as_ref()
                         .ok()
-                        .filter(|_| sch.enabled && s.target != SnippetTarget::None)
+                        .filter(|_| sch.enabled && (s.target != SnippetTarget::None || aws.contains_key(&item.id)))
                         .and_then(|c| c.next_local(now))
                         .map(|d| d.timestamp()),
                     error: parsed.err(),
@@ -155,11 +156,12 @@ async fn tick(state: &AppState) {
         let Ok(items) = vessel.items(Some(EntityKind::Snippet)) else {
             return;
         };
+        let aws = crate::aws::snippets::targets(&vessel);
         let due = items
             .iter()
             .filter(|i| i.vault_id == personal)
             .filter_map(|i| match &i.entity {
-                Entity::Snippet(s) if s.target != SnippetTarget::None => Some((i.id, s)),
+                Entity::Snippet(s) if s.target != SnippetTarget::None || aws.contains_key(&i.id) => Some((i.id, s)),
                 _ => None,
             })
             .flat_map(|(id, s)| {

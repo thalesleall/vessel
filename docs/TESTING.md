@@ -124,7 +124,8 @@ Para conferir à mão, com uma conta real: um perfil mestre, perfis de assume ro
 7. Numa instância online, **Terminal**. *Esperado:* uma aba com o shell da instância. Numa offline ou não gerenciada, as ações ficam desativadas, e passar o mouse diz por quê.
 8. **SSH** com uma chave do cofre e o usuário da AMI (`ec2-user`, `ubuntu`). *Esperado:* na primeira vez, pede para confirmar a impressão digital; depois, conecta direto.
 9. **Porta** 5432 com o host de um banco que a instância alcança. *Esperado:* uma aba com o redirecionamento; `localhost:5432` responde; fechar a aba encerra.
-10. Ligue "Agentes de IA podem listar estas instâncias…" e peça ao assistente "liste minhas instâncias AWS" e "abra uma sessão na instância X". *Esperado:* funciona, a aba é marcada IA; com a opção desligada, as duas são recusadas.
+10. Em **Snippets → Novo snippet**, escolha **Instância AWS** e uma favorita, com o script `uptime`. Clique em ▶. *Esperado:* "terminou sem erros" e a saída da instância no histórico. Em outro computador da mesma conta, o snippet aparece como "Colar no terminal".
+11. Ligue "Agentes de IA podem listar estas instâncias…" e peça ao assistente "liste minhas instâncias AWS" e "abra uma sessão na instância X". *Esperado:* funciona, a aba é marcada IA; com a opção desligada, as duas são recusadas.
 
 ## 4. Port forwarding (todos pelo host Bastion)
 

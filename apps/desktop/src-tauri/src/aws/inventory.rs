@@ -306,14 +306,14 @@ impl<C: CredentialSource, S: Sink> Ctx<C, S> {
     }
 }
 
-fn retry(l: &Limits) -> ec2::config::retry::RetryConfig {
+pub(crate) fn retry(l: &Limits) -> ec2::config::retry::RetryConfig {
     ec2::config::retry::RetryConfig::adaptive()
         .with_max_attempts(l.max_attempts)
         .with_initial_backoff(l.initial_backoff)
         .with_max_backoff(Duration::from_secs(20))
 }
 
-fn timeouts(l: &Limits) -> ec2::config::timeout::TimeoutConfig {
+pub(crate) fn timeouts(l: &Limits) -> ec2::config::timeout::TimeoutConfig {
     ec2::config::timeout::TimeoutConfig::builder()
         .connect_timeout(Duration::from_secs(10))
         .operation_attempt_timeout(Duration::from_secs(30))
@@ -604,7 +604,7 @@ async fn list_ec2(
 
 /// An SDK error as the screen shows it: service errors by code and message, transport errors
 /// by their chain of causes.
-fn sdk_error<E, R>(e: &ec2::error::SdkError<E, R>, action: &str) -> AwsError
+pub(crate) fn sdk_error<E, R>(e: &ec2::error::SdkError<E, R>, action: &str) -> AwsError
 where
     E: ProvideErrorMetadata + std::error::Error + 'static,
     R: std::fmt::Debug,

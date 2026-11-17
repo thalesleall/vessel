@@ -281,6 +281,7 @@ A tela AWS mapeia as instâncias EC2 das contas que a pessoa acessa pelo AWS CLI
 - **Erros.** Cada perfil e região guarda o próprio erro, sem parar os outros: sessão expirada, assume role negado, permissão que falta (com o nome da ação), limite da API, região desabilitada, rede. A tela oferece "Tentar de novo" no nó.
 - **Cache.** O último mapeamento, os favoritos, as regiões escolhidas e as chaves SSH das instâncias ficam no dispositivo, cifrados com a chave da conta, e não sincronizam.
 - **Sessões.** Terminal (`aws ssm start-session`), redirecionamento de porta (`AWS-StartPortForwardingSession`, ou `…ToRemoteHost` para um host que a instância alcança) e SSH pelo túnel `AWS-StartSSHSession`, com credencial do cofre e a chave do servidor confirmada na primeira vez. Os processos recebem os argumentos como lista, sem shell; perfis, regiões e IDs são conferidos, e uma sessão só vai a uma instância que o último mapeamento encontrou naquele perfil e região e que está no Session Manager.
+- **Snippets.** Um snippet pode ter como destino uma instância favorita. No cofre ele fica "sem destino": a instância (perfil, região, ID, se é Windows) fica no dispositivo, cifrada, e vale só ali; nos outros computadores o snippet só pode ser colado num terminal. Roda com Run Command (`AWS-RunShellScript`, ou `AWS-RunPowerShellScript` em Windows), com as credenciais temporárias do perfil e o tempo máximo do snippet; ao estourar, o comando é cancelado na instância. Saída e código de saída vão para o histórico, como nos outros destinos. Agendamentos valem neste computador; um assistente só roda esse snippet se a opção de agentes da tela AWS estiver ligada.
 - **Ferramentas.** O app procura o AWS CLI e o Session Manager Plugin no PATH e nas pastas padrão de instalação, e mostra como instalar o que faltar. Ele respeita `AWS_ENDPOINT_URL`, como o CLI.
 
 ### 9.6 Atualizações
@@ -331,5 +332,5 @@ Para não perder dados: o app grava um backup cifrado do banco antes de migrar; 
 - Registros antigos no formato 1 não protegem a versão nem a marca de exclusão até serem regravados, o que acontece sozinho na primeira sincronização de quem pode escrever no cofre.
 - O instalador do Windows ainda não tem certificado de assinatura de código (as atualizações são assinadas pela chave do atualizador, §9.6). macOS e Linux não têm instalador.
 - Snippets agendados só rodam com o app aberto e o cofre desbloqueado; não há agendamento com o app fechado nem crontab no servidor.
-- A tela AWS depende do AWS CLI deste computador, e as sessões, do Session Manager Plugin. Favoritos ainda não valem como destino de snippets.
+- A tela AWS depende do AWS CLI deste computador, e as sessões, do Session Manager Plugin. O destino AWS de um snippet vale só no computador em que foi escolhido.
 - Não há verificação de e-mail no cadastro. Num servidor com cadastro aberto, a tela de cadastro revela se um e-mail já tem conta.
