@@ -339,3 +339,104 @@ fn conpty_raw_dump() {
     println!("PLAIN: {:?}", crate::terminal::to_plain_text(&all[start..]));
     let _ = child.kill();
 }
+
+/// The bastion and the target behind it, with their host keys pinned (as after the user
+/// confirmed them once).
+async fn pinned_chain() -> (Hop, Hop) {
+    let conn = ssh::connect(
+        &plan(vec![with_password(bastion()), with_key(target())]),
+        true,
+    )
+    .await
+    .unwrap();
+    let keys = conn.new_host_keys.clone();
+    conn.close().await;
+    let fp = |host: &str| {
+        keys.iter()
+            .find(|k| k.host == host)
+            .map(|k| k.fingerprint.clone())
+    };
+    let mut b = with_password(bastion());
+    b.known_fingerprint = fp("127.0.0.1:2222");
+    let mut t = with_key(target());
+    t.known_fingerprint = fp("target:22");
+    assert!(
+        b.known_fingerprint.is_some() && t.known_fingerprint.is_some(),
+        "{keys:?}"
+    );
+    (b, t)
+}
+
+#[tokio::test]
+#[ignore = "needs the Docker test lab"]
+async fn lab_snippet_runs_with_output_exit_code_and_timeout() {
+    use crate::runs::run_ssh;
+    let (b, t) = pinned_chain().await;
+    let r = run_ssh(
+        "bastion".into(),
+        Ok(plan(vec![b.clone()])),
+        "echo um\r\necho dois >&2\r\nexit 7",
+        Duration::from_secs(20),
+        4096,
+    )
+    .await;
+    assert_eq!(r.exit_code, Some(7), "{r:?}");
+    assert_eq!((r.stdout.trim(), r.stderr.trim()), ("um", "dois"));
+    // Through the jump host, like a host with ProxyJump.
+    let r = run_ssh(
+        "target".into(),
+        Ok(plan(vec![b.clone(), t])),
+        "hostname",
+        Duration::from_secs(20),
+        4096,
+    )
+    .await;
+    assert_eq!((r.exit_code, r.stdout.trim()), (Some(0), "target"), "{r:?}");
+    let started = std::time::Instant::now();
+    let r = run_ssh(
+        "bastion".into(),
+        Ok(plan(vec![b])),
+        "sleep 30",
+        Duration::from_secs(2),
+        4096,
+    )
+    .await;
+    assert!(r.timed_out, "{r:?}");
+    assert!(started.elapsed() < Duration::from_secs(8));
+}
+
+#[tokio::test]
+#[ignore = "needs the Docker test lab"]
+async fn lab_snippet_refuses_unknown_and_changed_host_keys() {
+    use crate::runs::run_ssh;
+    let r = run_ssh(
+        "bastion".into(),
+        Ok(plan(vec![with_password(bastion())])),
+        "echo hi",
+        Duration::from_secs(20),
+        4096,
+    )
+    .await;
+    assert!(
+        r.error
+            .as_deref()
+            .is_some_and(|e| e.contains("ainda não é conhecida")),
+        "{r:?}"
+    );
+    assert!(r.stdout.is_empty());
+    let mut changed = with_password(bastion());
+    changed.known_fingerprint = Some("SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into());
+    let r = run_ssh(
+        "bastion".into(),
+        Ok(plan(vec![changed])),
+        "echo hi",
+        Duration::from_secs(20),
+        4096,
+    )
+    .await;
+    assert!(
+        r.error.as_deref().is_some_and(|e| e.contains("mudou")),
+        "{r:?}"
+    );
+    assert!(r.stdout.is_empty());
+}

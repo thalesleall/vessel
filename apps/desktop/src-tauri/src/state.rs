@@ -9,6 +9,8 @@ use vessel_client::Vessel;
 
 use crate::forward::Forwards;
 use crate::mcp::McpControl;
+use crate::runs::Runs;
+use crate::scheduler::SchedulerState;
 use crate::terminal::Terminals;
 
 /// Device-local preferences (not synced).
@@ -25,6 +27,12 @@ pub struct LocalSettings {
     pub mcp_allow_terminal_input: bool,
     /// Let agents create, edit and delete items.
     pub mcp_allow_writes: bool,
+    /// Scheduled snippets wait until the user resumes them.
+    pub schedules_paused: bool,
+    /// Closing the window keeps Vessel in the tray (schedules keep running).
+    pub close_to_tray: bool,
+    /// Do not lock after inactivity while snippets are scheduled. Off: the user accepts the risk.
+    pub keep_unlocked_for_schedules: bool,
 }
 
 impl Default for LocalSettings {
@@ -37,6 +45,9 @@ impl Default for LocalSettings {
             mcp_token: String::new(),
             mcp_allow_terminal_input: false,
             mcp_allow_writes: false,
+            schedules_paused: false,
+            close_to_tray: true,
+            keep_unlocked_for_schedules: false,
         }
     }
 }
@@ -65,6 +76,8 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub mcp: Arc<McpControl>,
     pub activity: Arc<Mutex<VecDeque<Activity>>>,
+    pub runs: Arc<Runs>,
+    pub scheduler: Arc<SchedulerState>,
 }
 
 impl AppState {

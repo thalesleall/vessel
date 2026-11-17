@@ -69,7 +69,11 @@ impl Vessel {
     /// key version this device does not hold, and it would replace a copy this device has.
     /// Legitimately that only happens while a key rotation is under way and the new grant has
     /// not been fetched yet, so the caller fetches grants and tries again later.
-    pub(crate) fn unverifiable_replacement(&self, vault: &Uuid, record: &RecordDto) -> Result<bool> {
+    pub(crate) fn unverifiable_replacement(
+        &self,
+        vault: &Uuid,
+        record: &RecordDto,
+    ) -> Result<bool> {
         Ok(self.vault_key(vault, record.key_version).is_err()
             && self.store.record(vault, &record.id)?.is_some())
     }
@@ -86,12 +90,11 @@ impl Vessel {
         let refuse = |why: &'static str| Err(vessel_crypto::CryptoError::Malformed(why).into());
         let legacy = format_version(record.blob.as_slice()) == Some(FORMAT_V1);
         let local = self.store.record(vault, &record.id)?;
-        if self.vault_key(vault, record.key_version).is_err() && (local.is_some() || record.deleted) {
+        if self.vault_key(vault, record.key_version).is_err() && (local.is_some() || record.deleted)
+        {
             return refuse("a record under a key version this device does not hold");
         }
-        if legacy
-            && local.is_some_and(|l| format_version(l.blob.as_slice()) != Some(FORMAT_V1))
-        {
+        if legacy && local.is_some_and(|l| format_version(l.blob.as_slice()) != Some(FORMAT_V1)) {
             return refuse("an old-format copy of a record this device has in the current format");
         }
         self.open_entity(vault, record)
@@ -167,6 +170,33 @@ impl Vessel {
             WrapPurpose::LocalData,
             sealed,
         )?)?)
+    }
+
+    /// Device-only data that is never synced, sealed with the account key: readable only while
+    /// unlocked, and deleted with the rest of the local data on logout.
+    pub fn device_sealed<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Result<Option<T>> {
+        let Some(sealed) = self
+            .store
+            .get::<vessel_protocol::Bytes>(&format!("device:{key}"))?
+        else {
+            return Ok(None);
+        };
+        self.open_local(&sealed.0).map(Some)
+    }
+
+    pub fn set_device_sealed<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
+        let sealed = vessel_protocol::Bytes(self.seal_local(value)?);
+        self.store.set(&format!("device:{key}"), &sealed)
+    }
+
+    /// Device-only bookkeeping kept in clear, readable while locked. Only for values that say
+    /// nothing about the vault's contents (timestamps).
+    pub fn device_plain<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Result<Option<T>> {
+        self.store.get(&format!("device-plain:{key}"))
+    }
+
+    pub fn set_device_plain<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
+        self.store.set(&format!("device-plain:{key}"), value)
     }
 
     /// Every item the user can see, optionally of one kind, with local edits applied.

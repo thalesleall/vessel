@@ -210,12 +210,17 @@ pub fn plan_from(vessel: &Vessel, origin: Option<Uuid>, host_id: Uuid) -> CmdRes
     if target.address.trim().is_empty() {
         return Err(CmdError::new("invalid", "O host não tem endereço."));
     }
-    let startup_script = target.startup_snippet_id.and_then(|id| {
-        match scope.get(target_vault, id).map(|i| &i.entity) {
-            Some(Entity::Snippet(s)) => Some(s.script.clone()),
+    let scripts: Vec<String> = target
+        .startup_snippets()
+        .into_iter()
+        .filter_map(|id| match scope.get(target_vault, id).map(|i| &i.entity) {
+            Some(Entity::Snippet(s)) if !s.script.trim().is_empty() => {
+                Some(s.script.trim_end().to_string())
+            }
             _ => None,
-        }
-    });
+        })
+        .collect();
+    let startup_script = (!scripts.is_empty()).then(|| scripts.join("\n"));
     let mut chain = vec![(target_vault, target.clone())];
     let mut next = target.jump_host_id.map(|id| (target_vault, id));
     while let Some((origin, id)) = next {
@@ -509,6 +514,65 @@ pub fn remember_host_keys(vessel: &mut Vessel, keys: &[NewHostKey]) -> CmdResult
         vessel.save(vault, id, entity)?;
     }
     Ok(())
+}
+
+/// What a non-interactive command printed and how it ended.
+#[derive(Debug, Default)]
+pub struct ExecOutput {
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub exit_code: Option<i32>,
+    pub truncated: bool,
+}
+
+fn push_capped(buf: &mut Vec<u8>, data: &[u8], cap: usize, truncated: &mut bool) {
+    let room = cap.saturating_sub(buf.len());
+    if data.len() > room {
+        *truncated = true;
+    }
+    buf.extend_from_slice(&data[..data.len().min(room)]);
+}
+
+/// Runs `script` with the account's shell on the target (an SSH `exec`, no terminal), keeping at
+/// most `cap` bytes of stdout and of stderr. Ends at `deadline`.
+pub async fn exec(
+    conn: &Connection,
+    script: &str,
+    cap: usize,
+    deadline: tokio::time::Instant,
+) -> CmdResult<ExecOutput> {
+    let mut channel = conn.target().channel_open_session().await?;
+    channel.exec(true, script.replace("\r\n", "\n")).await?;
+    let mut out = ExecOutput::default();
+    loop {
+        let msg = tokio::time::timeout_at(deadline, channel.wait())
+            .await
+            .map_err(|_| CmdError::new("timeout", "Tempo máximo de execução esgotado."))?;
+        match msg {
+            Some(ChannelMsg::Data { data }) => {
+                push_capped(&mut out.stdout, &data, cap, &mut out.truncated)
+            }
+            Some(ChannelMsg::ExtendedData { data, .. }) => {
+                push_capped(&mut out.stderr, &data, cap, &mut out.truncated)
+            }
+            Some(ChannelMsg::ExitStatus { exit_status }) => {
+                out.exit_code = Some(exit_status as i32)
+            }
+            Some(ChannelMsg::ExitSignal { signal_name, .. }) => {
+                out.exit_code.get_or_insert(128);
+                let note = format!("\n[encerrado pelo sinal {signal_name:?}]");
+                push_capped(
+                    &mut out.stderr,
+                    note.as_bytes(),
+                    cap + 64,
+                    &mut out.truncated,
+                );
+            }
+            Some(ChannelMsg::Close) | None => break,
+            _ => {}
+        }
+    }
+    Ok(out)
 }
 
 /// Runs an interactive shell on an established connection until either side closes it.

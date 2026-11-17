@@ -2,6 +2,7 @@
 
 mod background;
 mod commands;
+mod cron;
 mod error;
 mod forward;
 #[cfg(test)]
@@ -9,9 +10,12 @@ mod lab_tests;
 mod local;
 mod mcp;
 mod ops;
+mod runs;
+mod scheduler;
 mod ssh;
 mod state;
 mod terminal;
+mod tray;
 mod update;
 
 use std::sync::{Arc, Mutex};
@@ -31,7 +35,14 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
+        // A second launch (the Start menu while Vessel sits in the tray) shows the running copy:
+        // two copies would share one database.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_main(app)
+        }))
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(tray::on_window_event)
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -46,8 +57,13 @@ pub fn run() {
                 data_dir,
                 mcp: Arc::default(),
                 activity: Arc::default(),
+                runs: Arc::default(),
+                scheduler: Arc::default(),
             };
+            runs::clean_tmp(&state.data_dir);
             background::spawn(state.clone());
+            scheduler::spawn(state.clone());
+            tray::setup(app, &state)?;
             // Start MCP right away when enabled, so agents get "locked" instead of "connection refused".
             let mcp_state = state.clone();
             tauri::async_runtime::spawn(async move { mcp::apply(&mcp_state).await });
@@ -116,6 +132,14 @@ pub fn run() {
             commands::mcp_activity,
             commands::update_check,
             commands::update_install,
+            commands::run_snippet,
+            commands::snippet_runs,
+            commands::clear_snippet_runs,
+            commands::scheduler_status,
+            commands::set_schedules_paused,
+            commands::cron_preview,
+            commands::get_background_settings,
+            commands::set_background_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vessel");

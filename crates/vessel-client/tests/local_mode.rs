@@ -283,3 +283,37 @@ async fn disconnect_keeps_personal_and_shared_items_locally() {
     alice.recover_local(&recovery, PW2).unwrap();
     assert_eq!(labels(&alice, EntityKind::Host), vec!["mine", "shared"]);
 }
+
+#[test]
+fn device_data_is_sealed_and_needs_the_unlocked_vault() {
+    let db = temp_db("device.db");
+    let mut v = Vessel::open(&db).unwrap();
+    v.create_local("x", PW).unwrap();
+    let history = vec!["secret output 4711".to_string()];
+    v.set_device_sealed("runs", &history).unwrap();
+    v.set_device_plain("tick", &1234_i64).unwrap();
+    assert_eq!(
+        v.device_sealed::<Vec<String>>("runs").unwrap(),
+        Some(history.clone())
+    );
+
+    v.lock();
+    assert!(matches!(
+        v.device_sealed::<Vec<String>>("runs"),
+        Err(ClientError::Locked)
+    ));
+    assert_eq!(v.device_plain::<i64>("tick").unwrap(), Some(1234));
+    drop(v);
+    let raw = std::fs::read(&db).unwrap();
+    assert!(
+        !raw.windows(11).any(|w| w == b"output 4711"),
+        "history must not be on disk in clear"
+    );
+
+    let mut v = Vessel::open(&db).unwrap();
+    v.unlock(PW).unwrap();
+    assert_eq!(
+        v.device_sealed::<Vec<String>>("runs").unwrap(),
+        Some(history)
+    );
+}

@@ -720,3 +720,122 @@ pub async fn update_install(state: S<'_>, version: String) -> CmdResult<()> {
     state.forwards.stop_all();
     crate::update::install(&state.app, &version).await
 }
+
+// -- snippets: runs, schedules, tray ----------------------------------------------------------
+
+/// Runs a snippet on its target. `confirmed`: the user saw the script (see `runs::run`).
+#[tauri::command]
+pub async fn run_snippet(
+    state: S<'_>,
+    snippet_id: Uuid,
+    confirmed: Option<bool>,
+) -> CmdResult<crate::runs::RunRecord> {
+    crate::runs::run(
+        &state,
+        snippet_id,
+        crate::runs::RunOrigin::Manual,
+        confirmed.unwrap_or(false),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn snippet_runs(
+    state: S<'_>,
+    snippet_id: Option<Uuid>,
+) -> CmdResult<Vec<crate::runs::RunRecord>> {
+    crate::runs::history(&state, snippet_id).await
+}
+
+#[tauri::command]
+pub async fn clear_snippet_runs(state: S<'_>, snippet_id: Option<Uuid>) -> CmdResult<()> {
+    crate::runs::clear_history(&state, snippet_id).await
+}
+
+#[derive(Serialize)]
+pub struct SchedulerView {
+    #[serde(flatten)]
+    pub status: crate::scheduler::SchedulerStatus,
+    /// The vault should not lock by itself now (the user's choice, with schedules active).
+    pub keep_unlocked: bool,
+}
+
+#[tauri::command]
+pub async fn scheduler_status(state: S<'_>) -> CmdResult<SchedulerView> {
+    let status = crate::scheduler::status(&state).await;
+    let keep_unlocked = state.settings().keep_unlocked_for_schedules
+        && !status.paused
+        && status.schedules.iter().any(|s| s.next.is_some());
+    Ok(SchedulerView {
+        status,
+        keep_unlocked,
+    })
+}
+
+#[tauri::command]
+pub async fn set_schedules_paused(state: S<'_>, paused: bool) -> CmdResult<()> {
+    crate::tray::set_paused(&state, paused);
+    Ok(())
+}
+
+/// The next times of a cron expression, to show while the user types it.
+#[tauri::command]
+pub async fn cron_preview(expr: String) -> CmdResult<Vec<i64>> {
+    let cron = crate::cron::Cron::parse(&expr).map_err(|m| CmdError::new("invalid", m))?;
+    let mut out = Vec::new();
+    let mut t = chrono::Local::now();
+    while out.len() < 3 {
+        let Some(next) = cron.next_local(t) else {
+            break;
+        };
+        out.push(next.timestamp());
+        t = next;
+    }
+    if out.is_empty() {
+        return Err(CmdError::new("invalid", "Essa expressão nunca acontece."));
+    }
+    Ok(out)
+}
+
+#[derive(Serialize)]
+pub struct BackgroundSettings {
+    pub close_to_tray: bool,
+    pub autostart: bool,
+    pub keep_unlocked_for_schedules: bool,
+}
+
+fn background_settings(state: &AppState) -> BackgroundSettings {
+    let s = state.settings();
+    BackgroundSettings {
+        close_to_tray: s.close_to_tray,
+        autostart: crate::tray::autostart_enabled(),
+        keep_unlocked_for_schedules: s.keep_unlocked_for_schedules,
+    }
+}
+
+#[tauri::command]
+pub async fn get_background_settings(state: S<'_>) -> CmdResult<BackgroundSettings> {
+    Ok(background_settings(&state))
+}
+
+#[tauri::command]
+pub async fn set_background_settings(
+    state: S<'_>,
+    close_to_tray: bool,
+    autostart: bool,
+    keep_unlocked_for_schedules: bool,
+) -> CmdResult<BackgroundSettings> {
+    state.update_settings(|s| {
+        s.close_to_tray = close_to_tray;
+        s.keep_unlocked_for_schedules = keep_unlocked_for_schedules;
+    })?;
+    if autostart != crate::tray::autostart_enabled() {
+        crate::tray::set_autostart(autostart).map_err(|m| {
+            CmdError::new(
+                "autostart",
+                format!("Não foi possível mudar a inicialização com o Windows: {m}"),
+            )
+        })?;
+    }
+    Ok(background_settings(&state))
+}

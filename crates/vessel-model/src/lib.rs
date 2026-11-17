@@ -143,13 +143,26 @@ pub struct Host {
     pub os: String,
     pub color: String,
     pub notes: String,
+    /// Older single "snippet on connect". Still written (the first of `startup_snippet_ids`)
+    /// so versions that only know this field keep running it.
     pub startup_snippet_id: Option<Uuid>,
+    /// Snippets typed into the shell after connecting, in order.
+    pub startup_snippet_ids: Vec<Uuid>,
     pub keepalive_secs: Option<u32>,
     #[serde(flatten)]
     pub extra: Extra,
 }
 
 impl Host {
+    /// Snippets to run on connect, in order: the list, or the older single field.
+    pub fn startup_snippets(&self) -> Vec<Uuid> {
+        if self.startup_snippet_ids.is_empty() {
+            self.startup_snippet_id.into_iter().collect()
+        } else {
+            self.startup_snippet_ids.clone()
+        }
+    }
+
     pub fn effective_port(&self) -> u16 {
         self.port.unwrap_or(match self.protocol {
             HostProtocol::Ssh => 22,
@@ -206,14 +219,60 @@ pub struct KnownHost {
     pub extra: Extra,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// Where a snippet runs when started from the snippet grid, a schedule or an agent.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SnippetTarget {
+    /// No destination: pasted into a terminal the user picks.
+    #[default]
+    None,
+    /// A shell on this computer, without a window.
+    Local { shell: Shell },
+    /// One or more hosts over SSH, in parallel.
+    Hosts { host_ids: Vec<Uuid> },
+}
+
+/// A time a snippet runs by itself, as a five-field cron expression in local time.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Schedule {
+    pub cron: String,
+    pub enabled: bool,
+}
+
+pub const DEFAULT_SNIPPET_TIMEOUT_SECS: u32 = 60;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Snippet {
     pub label: String,
     pub script: String,
     pub tags: Vec<String>,
+    pub target: SnippetTarget,
+    /// Ask before running it by hand. Agents cannot run a snippet that asks.
+    pub confirm: bool,
+    pub schedules: Vec<Schedule>,
+    /// AI agents (MCP) may run it, as it is: they cannot change its script or target.
+    pub agent_allowed: bool,
+    pub timeout_secs: u32,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+impl Default for Snippet {
+    fn default() -> Self {
+        Self {
+            label: String::new(),
+            script: String::new(),
+            tags: Vec::new(),
+            target: SnippetTarget::None,
+            confirm: false,
+            schedules: Vec::new(),
+            agent_allowed: false,
+            timeout_secs: DEFAULT_SNIPPET_TIMEOUT_SECS,
+            extra: Extra::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -378,6 +437,77 @@ mod tests {
         assert_eq!(host.effective_port(), 22);
         let back: serde_json::Value = serde_json::from_slice(&entity.to_json()).unwrap();
         assert_eq!(back["data"]["future_field"]["x"], 1);
+    }
+
+    #[test]
+    fn old_snippets_read_as_paste_only() {
+        let json = br#"{"type":"snippet","data":{"label":"df","script":"df -h","tags":["disk"]}}"#;
+        let Entity::Snippet(s) = Entity::from_json(json).unwrap() else {
+            panic!()
+        };
+        assert_eq!(s.target, SnippetTarget::None);
+        assert!(!s.confirm && !s.agent_allowed && s.schedules.is_empty());
+        assert_eq!(s.timeout_secs, DEFAULT_SNIPPET_TIMEOUT_SECS);
+        assert!(s.extra.is_empty());
+    }
+
+    #[test]
+    fn new_snippet_fields_survive_an_older_client() {
+        let new = Snippet {
+            label: "wake".into(),
+            script: "wakeonlan aa:bb".into(),
+            target: SnippetTarget::Hosts {
+                host_ids: vec![new_id()],
+            },
+            confirm: true,
+            schedules: vec![Schedule {
+                cron: "0 7 * * 1-5".into(),
+                enabled: true,
+            }],
+            agent_allowed: true,
+            timeout_secs: 5,
+            ..Default::default()
+        };
+        let json = Entity::Snippet(new.clone()).to_json();
+
+        // An older client only knows label, script and tags; the rest lands in `extra`.
+        #[derive(Serialize, Deserialize)]
+        struct OldSnippet {
+            label: String,
+            script: String,
+            tags: Vec<String>,
+            #[serde(flatten)]
+            extra: Extra,
+        }
+        let v: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        let mut old: OldSnippet = serde_json::from_value(v["data"].clone()).unwrap();
+        assert!(old.extra.contains_key("schedules") && old.extra.contains_key("target"));
+        old.label = "wake pc".into();
+        let back = serde_json::json!({ "type": "snippet", "data": old });
+        let Entity::Snippet(s) = Entity::from_json(&serde_json::to_vec(&back).unwrap()).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(
+            s,
+            Snippet {
+                label: "wake pc".into(),
+                ..new
+            }
+        );
+    }
+
+    #[test]
+    fn startup_snippets_fall_back_to_the_single_field() {
+        let one = new_id();
+        let mut h = Host {
+            startup_snippet_id: Some(one),
+            ..Default::default()
+        };
+        assert_eq!(h.startup_snippets(), vec![one]);
+        let two = new_id();
+        h.startup_snippet_ids = vec![two, one];
+        assert_eq!(h.startup_snippets(), vec![two, one]);
     }
 
     #[test]
