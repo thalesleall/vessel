@@ -354,7 +354,7 @@ function SnippetEditor(props: { item: SnippetItem | null; onClose: () => void })
             <Field label="Instância" hint="Roda pelo Session Manager (Run Command), com o perfil da AWS deste computador. A escolha da instância fica só neste computador: nos outros, o snippet aparece sem destino.">
               <select value={awsKey(d().target as AwsSnippetTarget)} onChange={(e) => { const c = awsChoices().find((x) => awsKey(x) === e.currentTarget.value); if (c) setTarget(awsTargetOf(c)); }}>
                 <Show when={!(d().target as AwsSnippetTarget).instance_id}><option value="">Escolha…</option></Show>
-                <For each={awsChoices()}>{(c) => <option value={awsKey(c)}>{c.label} · {c.instance_id} · {c.profile} · {c.region}</option>}</For>
+                <For each={awsChoices()}>{(c) => <option value={awsKey(c)}>{c.label} ({c.instance_id}, {c.profile}, {c.region})</option>}</For>
                 <Show when={(d().target as AwsSnippetTarget).instance_id && !awsChoices().some((c) => awsKey(c) === awsKey(d().target as AwsSnippetTarget))}>
                   <option value={awsKey(d().target as AwsSnippetTarget)}>{(d().target as AwsSnippetTarget).label} (não está nas favoritas)</option>
                 </Show>

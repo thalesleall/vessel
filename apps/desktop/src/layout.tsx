@@ -25,7 +25,7 @@ import type { SessionInfo } from "./api";
 function tabHint(k: SessionInfo["kind"]): string {
   switch (k.kind) {
     case "ssh": return k.address;
-    case "aws": return `${k.instance_id} · ${k.profile} · ${k.region}`;
+    case "aws": return `${k.instance_id}, ${k.profile}, ${k.region}`;
     default: return k.shell;
   }
 }

@@ -270,7 +270,8 @@ export interface AwsRegionNode { region: string; instances: AwsInstance[]; error
 export interface AwsProfileNode { profile: string; account: string | null; role_arn: string | null; regions: AwsRegionNode[]; error: AwsError | null }
 export interface AwsInventory { mapped_at: number; profiles: AwsProfileNode[]; partial: boolean }
 export interface AwsFavorite { profile: string; region: string; id: string }
-export interface AwsSettings { master: string | null; regions: Record<string, string[]>; favorites: AwsFavorite[] }
+export interface AwsClientPrefs { name: string; profile: string | null }
+export interface AwsSettings { master: string | null; regions: Record<string, string[]>; favorites: AwsFavorite[]; clients: Record<string, AwsClientPrefs> }
 export interface AwsTools { cli: string | null; cli_version: string | null; plugin: string | null; plugin_version: string | null }
 export interface AwsOverview {
   tools: AwsTools;

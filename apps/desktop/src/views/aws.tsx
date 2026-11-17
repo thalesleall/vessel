@@ -5,14 +5,14 @@ import {
 } from "../api";
 import { copy, refreshSessions, setActiveTab, toast } from "../store";
 import { withHostKeyCheck } from "../terminal";
-import { Badge, Button, Empty, Field, Icon, Modal, confirmAction } from "../ui";
+import { Badge, Button, Empty, Field, Icon, Modal, colorFor, confirmAction, initials } from "../ui";
 import { ItemSelect } from "./common";
 import { BLANK, PORT_MSG, intIn, invalid, isPort } from "../validate";
 
 const COLS = 120;
 const ROWS = 32;
-/** Rows drawn per region before "Mostrar mais": a large account stays responsive. */
-const PAGE = 200;
+/** Rows drawn per client before "Mostrar mais": a large account stays responsive. */
+const PAGE = 100;
 
 const CLI_URL = "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html";
 const PLUGIN_URL = "https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html";
@@ -67,8 +67,6 @@ function elapsed(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-const ssmText = { online: "online", offline: "offline", unmanaged: "não gerenciada" } as const;
-const ssmTone = { online: "green", offline: "amber", unmanaged: "gray" } as const;
 
 /** Why the SSM actions of an instance are off, or null when they are available. */
 function unavailable(i: AwsInstance, o: AwsOverview | undefined): string | null {
@@ -89,16 +87,75 @@ function errorHint(e: AwsError): string | null {
   }
 }
 
-function ErrorLine(props: { error: AwsError; onRetry?: () => void }) {
-  return (
-    <div class="aws-error" role="alert">
-      <Icon name="alert" size={14} />
-      <span>{props.error.message}<Show when={errorHint(props.error)}>{(h) => <span class="aws-hint"> {h()}</span>}</Show></span>
-      <Show when={props.onRetry && props.error.kind !== "cancelled"}>
-        <Button small icon="sync" onClick={() => props.onRetry!()}>Tentar de novo</Button>
-      </Show>
-    </div>
-  );
+// ---------------------------------------------------------------------------------------------
+// Clients: one per AWS account (or per profile when the account is unknown). Profiles that reach
+// the same account merge into one client, and each instance shows once.
+// ---------------------------------------------------------------------------------------------
+
+interface Target { profile: string; region: string; instance: AwsInstance }
+interface Row extends Target { client: string }
+interface Client {
+  key: string;
+  name: string;
+  account: string | null;
+  /** Profiles that reached it without errors. */
+  profiles: string[];
+  /** The profile its sessions use. */
+  access: string;
+  rows: Row[];
+}
+interface Problem { key: string; client: string; profile: string; region: string | null; error: AwsError }
+
+const accountKey = (account: string | null, profile: string) => account ?? `profile:${profile}`;
+
+function buildClients(inv: AwsInventory | null, config: AwsProfile[], settings: AwsSettings) {
+  type Acc = { key: string; account: string | null; profiles: Set<string>; seen: Map<string, Target[]>; problems: Omit<Problem, "client">[] };
+  const byKey = new Map<string, Acc>();
+  for (const node of inv?.profiles ?? []) {
+    const account = node.account ?? config.find((p) => p.name === node.profile)?.account ?? null;
+    const key = accountKey(account, node.profile);
+    const acc: Acc = byKey.get(key) ?? { key, account, profiles: new Set<string>(), seen: new Map<string, Target[]>(), problems: [] };
+    byKey.set(key, acc);
+    if (node.error) {
+      acc.problems.push({ key, profile: node.profile, region: null, error: node.error });
+      continue;
+    }
+    acc.profiles.add(node.profile);
+    for (const r of node.regions) {
+      if (r.error && r.error.kind !== "cancelled") acc.problems.push({ key, profile: node.profile, region: r.region, error: r.error });
+      for (const instance of r.instances) {
+        const id = `${r.region}|${instance.id}`;
+        const list = acc.seen.get(id) ?? [];
+        list.push({ profile: node.profile, region: r.region, instance });
+        acc.seen.set(id, list);
+      }
+    }
+  }
+  const clients: Client[] = [];
+  const problems: Problem[] = [];
+  let hidden = 0;
+  for (const acc of byKey.values()) {
+    const prefs = settings.clients[acc.key];
+    const profiles = [...acc.profiles].sort();
+    const access = prefs?.profile && profiles.includes(prefs.profile) ? prefs.profile : profiles[0] ?? acc.problems[0]?.profile ?? "";
+    const name = prefs?.name || access || acc.key;
+    for (const p of acc.problems) problems.push({ ...p, client: name });
+    const rows: Row[] = [...acc.seen.values()]
+      .map((candidates) => ({ ...(candidates.find((c) => c.profile === access) ?? candidates[0]), client: name }))
+      .sort((a, b) => (a.instance.name || "￿").localeCompare(b.instance.name || "￿") || a.instance.id.localeCompare(b.instance.id));
+    if (rows.length) clients.push({ key: acc.key, name, account: acc.account, profiles, access, rows });
+    else if (!acc.problems.length) hidden++;
+  }
+  clients.sort((a, b) => a.name.localeCompare(b.name));
+  return { clients, problems, hidden };
+}
+
+const COLLAPSED_KEY = "vessel.aws.collapsed";
+function loadCollapsed(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]")); } catch { return new Set(); }
+}
+function saveCollapsed(s: Set<string>) {
+  try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...s])); } catch { /* per-viewer convenience only */ }
 }
 
 export function AwsView() {
@@ -115,26 +172,32 @@ export function AwsView() {
   const [session, setSession] = createSignal<{ active: boolean; error: AwsError | null } | "checking" | null>(null);
   const [search, setSearch] = createSignal("");
   const [onlineOnly, setOnlineOnly] = createSignal(false);
-  const [profileFilter, setProfileFilter] = createSignal("");
+  const [clientFilter, setClientFilter] = createSignal("");
   const [regionFilter, setRegionFilter] = createSignal("");
   const [ssh, setSsh] = createSignal<Target | null>(null);
   const [forward, setForward] = createSignal<Target | null>(null);
+  const [editing, setEditing] = createSignal<Client | null>(null);
   const [regionsOf, setRegionsOf] = createSignal<string | null>(null);
+  const [showProblems, setShowProblems] = createSignal(false);
+  const [collapsed, setCollapsed] = createSignal(loadCollapsed());
 
-  const settings = () => overview()?.settings ?? { master: null, regions: {}, favorites: [] };
+  const settings = (): AwsSettings => ({ master: null, regions: {}, favorites: [], clients: {}, ...overview()?.settings });
   const master = () => overview()?.master ?? null;
   const profiles = () => overview()?.profiles ?? [];
   const masters = () => profiles().filter((p) => p.master === p.name);
   const inv = () => live() ?? inventory() ?? null;
   const isMapping = () => mapping() || !!overview()?.mapping;
+  const built = createMemo(() => buildClients(inv(), profiles(), settings()));
 
   const saveSettings = async (next: AwsSettings) => {
     try {
       const saved = await api.awsSaveSettings(next);
       const o = overview();
       if (o) mutateOverview({ ...o, settings: saved, master: saved.master ?? o.master });
+      return true;
     } catch (e) {
       toast(errorMessage(e), "error");
+      return false;
     }
   };
 
@@ -184,31 +247,50 @@ export function AwsView() {
     }
   };
 
-  const toggleFavorite = (f: AwsFavorite) => {
+  const sameFav = (f: AwsFavorite, t: Target) => f.id === t.instance.id && f.region === t.region;
+  const isFavorite = (t: Target) => settings().favorites.some((f) => sameFav(f, t));
+  const toggleFavorite = (t: Target) => {
     const s = settings();
-    const has = s.favorites.some((x) => x.id === f.id && x.profile === f.profile && x.region === f.region);
-    void saveSettings({ ...s, favorites: has ? s.favorites.filter((x) => !(x.id === f.id && x.profile === f.profile && x.region === f.region)) : [...s.favorites, f] });
+    void saveSettings({
+      ...s,
+      favorites: isFavorite(t) ? s.favorites.filter((f) => !sameFav(f, t)) : [...s.favorites, { profile: t.profile, region: t.region, id: t.instance.id }],
+    });
   };
-  const isFavorite = (profile: string, region: string, id: string) =>
-    settings().favorites.some((x) => x.id === id && x.profile === profile && x.region === region);
 
-  const matches = (i: AwsInstance) => {
-    const q = search().trim().toLowerCase();
-    if (q && !i.name.toLowerCase().includes(q) && !i.id.toLowerCase().includes(q) && !i.private_ip.includes(q)) return false;
+  const query = () => search().trim().toLowerCase();
+  const filtering = () => !!query() || onlineOnly() || !!regionFilter() || !!clientFilter();
+  const rowMatches = (r: Row, clientHit: boolean) => {
+    const i = r.instance;
     if (onlineOnly() && i.ssm !== "online") return false;
-    return true;
+    if (regionFilter() && r.region !== regionFilter()) return false;
+    const q = query();
+    return !q || clientHit || i.name.toLowerCase().includes(q) || i.id.toLowerCase().includes(q) || i.private_ip.includes(q);
   };
-  const shownProfiles = () => (inv()?.profiles ?? []).filter((p) => !profileFilter() || p.profile === profileFilter());
-  const allRegions = createMemo(() => [...new Set((inv()?.profiles ?? []).flatMap((p) => p.regions.map((r) => r.region)))].sort());
-  const favorites = createMemo(() => {
-    const out: Target[] = [];
-    for (const f of settings().favorites) {
-      const node = inv()?.profiles.find((p) => p.profile === f.profile)?.regions.find((r) => r.region === f.region);
-      const instance = node?.instances.find((i) => i.id === f.id);
-      if (instance) out.push({ profile: f.profile, region: f.region, instance });
-    }
-    return out;
+  const shown = createMemo(() =>
+    built().clients
+      .filter((c) => !clientFilter() || c.key === clientFilter())
+      .map((c) => {
+        const hit = !!query() && c.name.toLowerCase().includes(query());
+        return { client: c, rows: c.rows.filter((r) => rowMatches(r, hit)) };
+      })
+      .filter((x) => x.rows.length),
+  );
+  const totals = createMemo(() => {
+    const rows = built().clients.flatMap((c) => c.rows);
+    return { clients: built().clients.length, instances: rows.length, online: rows.filter((r) => r.instance.ssm === "online").length };
   });
+  const allRegions = createMemo(() => [...new Set(built().clients.flatMap((c) => c.rows.map((r) => r.region)))].sort());
+  const favorites = createMemo(() => {
+    const rows = built().clients.flatMap((c) => c.rows);
+    return settings().favorites.flatMap((f) => rows.filter((r) => r.instance.id === f.id && r.region === f.region).slice(0, 1));
+  });
+
+  const toggleCollapsed = (key: string) => {
+    const next = new Set(collapsed());
+    if (next.has(key)) next.delete(key); else next.add(key);
+    setCollapsed(next);
+    saveCollapsed(next);
+  };
 
   const openShell = async (t: Target) => {
     try {
@@ -236,13 +318,15 @@ export function AwsView() {
     }
   };
 
+  const actions = { onShell: (t: Target) => void openShell(t), onSsh: setSsh, onForward: setForward, onFavorite: toggleFavorite, isFavorite };
+
   return (
     <>
       <div class="page-head">
         <h1>AWS</h1>
         <div class="spacer" />
         <Show when={overview()?.mapped_at}>
-          {(t) => <span class="aws-muted" title={new Date(t() * 1000).toLocaleString("pt-BR")}>Mapeado {ago(t())}{overview()?.partial ? " (incompleto)" : ""}</span>}
+          {(t) => <span class="aws-muted" title={new Date(t() * 1000).toLocaleString("pt-BR")}>Mapeado {ago(t())}{overview()?.partial ? ", incompleto" : ""}</span>}
         </Show>
       </div>
 
@@ -263,9 +347,10 @@ export function AwsView() {
                 <div class="aws-top-row">
                   <Field label="Perfil mestre">
                     <select value={master() ?? ""} onChange={(e) => void saveSettings({ ...settings(), master: e.currentTarget.value || null })}>
-                      <For each={masters()}>{(p) => (
-                        <option value={p.name}>{p.name}{p.dependents.length ? ` (+${profiles().filter((x) => x.master === p.name && x.name !== p.name).length} perfis)` : ""}</option>
-                      )}</For>
+                      <For each={masters()}>{(p) => {
+                        const deps = () => profiles().filter((x) => x.master === p.name && x.name !== p.name).length;
+                        return <option value={p.name}>{p.name}{deps() ? ` (+${deps()} ${deps() === 1 ? "perfil" : "perfis"})` : ""}</option>;
+                      }}</For>
                       <option value={AWS_ALL}>Todos os perfis</option>
                     </select>
                   </Field>
@@ -293,59 +378,107 @@ export function AwsView() {
                   <div class="aws-progress" role="status">
                     <div class="aws-bar"><div style={{ width: `${progress() && progress()!.regions_total ? Math.round((progress()!.regions_done / progress()!.regions_total) * 100) : 4}%` }} /></div>
                     <span>{progress()
-                      ? `conta ${progress()!.accounts_done}/${progress()!.accounts_total} · região ${progress()!.regions_done}/${progress()!.regions_total} · ${elapsed(progress()!.elapsed_ms)}`
+                      ? `Conta ${progress()!.accounts_done} de ${progress()!.accounts_total}, região ${progress()!.regions_done} de ${progress()!.regions_total}`
                       : "Pegando as credenciais dos perfis…"}</span>
+                    <Show when={progress()}><span class="aws-muted mono">{elapsed(progress()!.elapsed_ms)}</span></Show>
                   </div>
                 </Show>
-                <label class="check aws-agents"><input type="checkbox" checked={o().agents_allowed} onChange={(e) => void setAgents(e.currentTarget.checked, e.currentTarget)} />
-                  Agentes de IA podem listar estas instâncias e abrir sessões nelas (MCP)</label>
               </div>
 
-              <Show when={favorites().length}>
-                <div class="section-title"><Icon name="check" size={14} />Favoritas</div>
-                <div class="list">
-                  <For each={favorites()}>{(t) => (
-                    <InstanceRow target={t} overview={o()} favorite onFavorite={() => toggleFavorite({ profile: t.profile, region: t.region, id: t.instance.id })}
-                      onShell={() => void openShell(t)} onSsh={() => setSsh(t)} onForward={() => setForward(t)} showWhere />
-                  )}</For>
+              <Show when={built().problems.length}>
+                <div class="callout callout-warn aws-problems" role="status"><Icon name="alert" />
+                  <div class="aws-problems-body">
+                    <div class="aws-problems-head">
+                      <span>{built().problems.length === 1 ? "Um perfil ou região não pôde ser mapeado." : `${built().problems.length} perfis ou regiões não puderam ser mapeados.`}</span>
+                      <button class="link-like" aria-expanded={showProblems()} onClick={() => setShowProblems(!showProblems())}>{showProblems() ? "Esconder" : "Ver detalhes"}</button>
+                    </div>
+                    <Show when={showProblems()}>
+                      <ul class="aws-problem-list">
+                        <For each={built().problems}>{(p) => (
+                          <li>
+                            <div class="aws-problem-where"><b>{p.client}</b><span class="aws-muted">{p.region ? `${p.profile}, ${p.region}` : p.profile}</span></div>
+                            <div class="aws-problem-what">{p.error.message}<Show when={errorHint(p.error)}>{(h) => <span class="aws-muted"> {h()}</span>}</Show></div>
+                            <Button small icon="sync" disabled={isMapping()} onClick={() => void start({ profile: p.profile, region: p.region ?? undefined })}>Tentar de novo</Button>
+                          </li>
+                        )}</For>
+                      </ul>
+                    </Show>
+                  </div>
                 </div>
               </Show>
 
-              <Show when={inv()?.profiles.length} fallback={
+              <Show when={built().clients.length} fallback={
                 <Show when={!isMapping()}>
-                  <Empty icon="cloud" title="Nada mapeado ainda">
-                    <span>“Mapear tudo” consulta as instâncias de todas as contas e regiões do perfil mestre. O resultado fica guardado, cifrado, só neste computador.</span>
+                  <Empty icon="cloud" title={inv()?.profiles.length ? "Nenhuma instância encontrada" : "Nada mapeado ainda"}>
+                    <span>{inv()?.profiles.length
+                      ? "O último mapeamento não encontrou instâncias nas contas e regiões consultadas."
+                      : "“Mapear tudo” consulta as instâncias de todas as contas e regiões do perfil mestre. O resultado fica guardado, cifrado, só neste computador."}</span>
                   </Empty>
                 </Show>
               }>
+                <div class="aws-summary" aria-label="Resumo">
+                  <span><b>{totals().clients}</b> {totals().clients === 1 ? "cliente" : "clientes"}</span>
+                  <span><b>{totals().instances}</b> {totals().instances === 1 ? "instância" : "instâncias"}</span>
+                  <span><span class="aws-dot online" /><b>{totals().online}</b> online no SSM</span>
+                </div>
+
+                <Show when={favorites().length}>
+                  <section class="aws-client aws-favorites">
+                    <div class="aws-client-head static">
+                      <span class="aws-client-icon"><Icon name="star" size={16} /></span>
+                      <div class="aws-client-title"><span class="name">Favoritas</span><span class="aws-muted">Também servem de destino para snippets</span></div>
+                    </div>
+                    <InstanceTable rows={favorites()} overview={o()} showClient {...actions} />
+                  </section>
+                </Show>
+
                 <div class="aws-filters">
                   <div class="search aws-search"><Icon name="search" size={16} />
-                    <input type="search" placeholder="Buscar por nome, ID ou IP…" aria-label="Buscar instâncias" value={search()} onInput={(e) => setSearch(e.currentTarget.value)} />
+                    <input type="search" placeholder="Buscar cliente, instância, ID ou IP…" aria-label="Buscar instâncias" value={search()} onInput={(e) => setSearch(e.currentTarget.value)} />
                   </div>
-                  <select aria-label="Filtrar por perfil" value={profileFilter()} onChange={(e) => setProfileFilter(e.currentTarget.value)}>
-                    <option value="">Todos os perfis</option>
-                    <For each={inv()?.profiles ?? []}>{(p) => <option value={p.profile}>{p.profile}</option>}</For>
-                  </select>
-                  <select aria-label="Filtrar por região" value={regionFilter()} onChange={(e) => setRegionFilter(e.currentTarget.value)}>
-                    <option value="">Todas as regiões</option>
-                    <For each={allRegions()}>{(r) => <option value={r}>{r}</option>}</For>
-                  </select>
+                  <Show when={built().clients.length > 1}>
+                    <select aria-label="Filtrar por cliente" value={clientFilter()} onChange={(e) => setClientFilter(e.currentTarget.value)}>
+                      <option value="">Todos os clientes</option>
+                      <For each={built().clients}>{(c) => <option value={c.key}>{c.name}</option>}</For>
+                    </select>
+                  </Show>
+                  <Show when={allRegions().length > 1}>
+                    <select aria-label="Filtrar por região" value={regionFilter()} onChange={(e) => setRegionFilter(e.currentTarget.value)}>
+                      <option value="">Todas as regiões</option>
+                      <For each={allRegions()}>{(r) => <option value={r}>{r}</option>}</For>
+                    </select>
+                  </Show>
                   <label class="check"><input type="checkbox" checked={onlineOnly()} onChange={(e) => setOnlineOnly(e.currentTarget.checked)} />Só online no SSM</label>
                 </div>
 
-                <For each={shownProfiles()}>{(p) => (
-                  <ProfileTree node={p} profile={profiles().find((x) => x.name === p.profile)} overview={o()} regionFilter={regionFilter()}
-                    matches={matches} filtering={!!search().trim() || onlineOnly()} busy={isMapping()}
-                    isFavorite={isFavorite} onFavorite={toggleFavorite}
-                    onRetry={(region) => void start({ profile: p.profile, region })}
-                    onRegions={() => setRegionsOf(p.profile)}
-                    onShell={(t) => void openShell(t)} onSsh={setSsh} onForward={setForward} />
-                )}</For>
+                <Show when={shown().length} fallback={<p class="aws-empty-filter">Nenhuma instância com esses filtros.</p>}>
+                  <For each={shown()}>{(x) => (
+                    <ClientCard client={x.client} rows={x.rows} total={x.client.rows.length} overview={o()} busy={isMapping()}
+                      open={filtering() || !collapsed().has(x.client.key)} onToggle={() => toggleCollapsed(x.client.key)}
+                      onEdit={() => setEditing(x.client)} onRemap={() => void start({ profile: x.client.access })}
+                      onRegion={(r) => setRegionFilter(r)} {...actions} />
+                  )}</For>
+                </Show>
+                <Show when={built().hidden}>
+                  <p class="aws-muted aws-footnote">{built().hidden === 1 ? "Uma conta sem instâncias não aparece." : `${built().hidden} contas sem instâncias não aparecem.`}</p>
+                </Show>
               </Show>
+
+              <label class="check aws-agents"><input type="checkbox" checked={o().agents_allowed} onChange={(e) => void setAgents(e.currentTarget.checked, e.currentTarget)} />
+                Agentes de IA podem listar estas instâncias e abrir sessões nelas (MCP)</label>
             </Show>
 
             <Show when={ssh()} keyed>{(t) => <SshDialog target={t} onClose={() => setSsh(null)} />}</Show>
             <Show when={forward()} keyed>{(t) => <ForwardDialog target={t} onClose={() => setForward(null)} />}</Show>
+            <Show when={editing()} keyed>{(c) => (
+              <ClientDialog client={c} limited={settings().regions[c.access]?.length ?? 0}
+                onRegions={() => setRegionsOf(c.access)}
+                onSave={async (name, profile) => {
+                  const clients = { ...settings().clients, [c.key]: { name: name === c.access ? "" : name, profile } };
+                  if (await saveSettings({ ...settings(), clients })) setEditing(null);
+                }}
+                onClose={() => setEditing(null)} />
+            )}</Show>
             <Show when={regionsOf()} keyed>{(p) => (
               <RegionsDialog profile={p} known={inv()?.profiles.find((x) => x.profile === p)?.regions.map((r) => r.region) ?? []}
                 chosen={settings().regions[p] ?? []}
@@ -385,148 +518,158 @@ function Tools(props: { overview: AwsOverview; onRecheck: () => void }) {
   );
 }
 
-interface Target { profile: string; region: string; instance: AwsInstance }
-
-function ProfileTree(props: {
-  node: AwsProfileNode;
-  profile: AwsProfile | undefined;
-  overview: AwsOverview;
-  regionFilter: string;
-  matches: (i: AwsInstance) => boolean;
-  filtering: boolean;
-  busy: boolean;
-  isFavorite: (profile: string, region: string, id: string) => boolean;
-  onFavorite: (f: AwsFavorite) => void;
-  onRetry: (region?: string) => void;
-  onRegions: () => void;
+interface RowActions {
   onShell: (t: Target) => void;
   onSsh: (t: Target) => void;
   onForward: (t: Target) => void;
+  onFavorite: (t: Target) => void;
+  isFavorite: (t: Target) => boolean;
+}
+
+function ClientCard(props: RowActions & {
+  client: Client;
+  rows: Row[];
+  total: number;
+  overview: AwsOverview;
+  busy: boolean;
+  open: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onRemap: () => void;
+  onRegion: (r: string) => void;
 }) {
-  const [open, setOpen] = createSignal(true);
-  const regions = () => props.node.regions.filter((r) => !props.regionFilter || r.region === props.regionFilter);
-  const count = () => props.node.regions.reduce((n, r) => n + r.instances.length, 0);
-  const role = () => props.node.role_arn?.split("/").pop();
-  const via = () => props.profile && props.profile.master !== props.profile.name ? props.profile.source_profile : null;
-  const limited = () => props.overview.settings.regions[props.node.profile]?.length;
+  const online = () => props.client.rows.filter((r) => r.instance.ssm === "online").length;
+  const regions = createMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of props.client.rows) m.set(r.region, (m.get(r.region) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  });
+  const sub = () => {
+    const parts = [props.client.account ? `Conta ${props.client.account}` : "Conta não identificada"];
+    if (props.client.profiles.length > 1 || props.client.name !== props.client.access) parts.push(`acesso por ${props.client.access}`);
+    return parts.join(", ");
+  };
   return (
-    <section class="aws-profile">
-      <div class="aws-profile-head">
-        <button class="aws-toggle" aria-expanded={open()} onClick={() => setOpen(!open())}>
-          <Icon name={open() ? "arrow-down" : "chevron-left"} size={14} />
-          <span class="name">{props.node.profile}</span>
+    <section class="aws-client" aria-label={`Cliente ${props.client.name}`}>
+      <div class="aws-client-head">
+        <button class="aws-client-toggle" aria-expanded={props.open} onClick={props.onToggle} title={props.open ? "Recolher" : "Expandir"}>
+          <span class="aws-client-icon" style={{ background: colorFor(props.client.name) }}>{initials(props.client.name)}</span>
+          <span class="aws-client-title">
+            <span class="name">{props.client.name}</span>
+            <span class="aws-muted">{sub()}</span>
+          </span>
         </button>
-        <span class="aws-muted">
-          {[props.node.account ? `conta ${props.node.account}` : null, role() ? `papel ${role()}` : null, via() ? `via ${via()}` : null].filter(Boolean).join(" · ")}
-        </span>
-        <Show when={props.profile?.problem}>{(p) => <Badge tone="red">{p()}</Badge>}</Show>
-        <div class="spacer" />
-        <span class="aws-muted">{count()} instâncias</span>
-        <Button small icon="settings" onClick={props.onRegions} title="Escolher as regiões deste perfil">{limited() ? (limited() === 1 ? "1 região" : `${limited()} regiões`) : "Regiões"}</Button>
-        <Button small icon="sync" onClick={() => props.onRetry()} disabled={props.busy} title="Mapear só este perfil de novo">Mapear</Button>
+        <div class="aws-client-stats">
+          <span>{props.rows.length === props.total ? props.total : `${props.rows.length} de ${props.total}`} {props.total === 1 ? "instância" : "instâncias"}</span>
+          <span title="Online no Session Manager"><span class="aws-dot online" />{online()} online</span>
+        </div>
+        <div class="aws-region-chips" aria-label="Regiões">
+          <For each={regions()}>{([r, n]) => (
+            <button class="aws-region-chip" title={`Mostrar só ${r}`} onClick={() => props.onRegion(r)}><span class="mono">{r}</span><span class="n">{n}</span></button>
+          )}</For>
+        </div>
+        <div class="aws-client-tools">
+          <button class="icon-btn" aria-label={`Editar o cliente ${props.client.name}`} title="Nome, perfil de acesso e regiões" onClick={props.onEdit}><Icon name="edit" size={15} /></button>
+          <button class="icon-btn" aria-label={`Mapear ${props.client.name} de novo`} title="Mapear este cliente de novo" disabled={props.busy} onClick={props.onRemap}><Icon name="sync" size={15} /></button>
+          <button class="icon-btn aws-chevron" classList={{ open: props.open }} aria-label={props.open ? "Recolher" : "Expandir"} onClick={props.onToggle}><Icon name="arrow-down" size={15} /></button>
+        </div>
       </div>
-      <Show when={props.node.error}>{(e) => <ErrorLine error={e()} onRetry={props.busy ? undefined : () => props.onRetry()} />}</Show>
-      <Show when={open()}>
-        <For each={regions()}>{(r) => (
-          <RegionTree profile={props.node.profile} node={r} overview={props.overview} matches={props.matches} filtering={props.filtering} busy={props.busy}
-            isFavorite={props.isFavorite} onFavorite={props.onFavorite} onRetry={() => props.onRetry(r.region)}
-            onShell={props.onShell} onSsh={props.onSsh} onForward={props.onForward} />
-        )}</For>
+      <Show when={props.open}>
+        <InstanceTable {...props} />
       </Show>
     </section>
   );
 }
 
-function RegionTree(props: {
-  profile: string;
-  node: AwsRegionNode;
-  overview: AwsOverview;
-  matches: (i: AwsInstance) => boolean;
-  filtering: boolean;
-  busy: boolean;
-  isFavorite: (profile: string, region: string, id: string) => boolean;
-  onFavorite: (f: AwsFavorite) => void;
-  onRetry: () => void;
-  onShell: (t: Target) => void;
-  onSsh: (t: Target) => void;
-  onForward: (t: Target) => void;
-}) {
-  const shown = createMemo(() => props.node.instances.filter(props.matches));
-  // Large regions start closed; a search opens every region with matches.
-  const [open, setOpen] = createSignal(props.node.instances.length <= 50);
+const stateText: Record<string, string> = { running: "Em execução", stopped: "Parada", stopping: "Parando", pending: "Iniciando", "shutting-down": "Encerrando" };
+const ssmLabel = { online: "Online", offline: "Offline", unmanaged: "Sem SSM" } as const;
+
+function InstanceTable(props: RowActions & { rows: Row[]; overview: AwsOverview; showClient?: boolean }) {
   const [limit, setLimit] = createSignal(PAGE);
-  const isOpen = () => open() || (props.filtering && shown().length > 0);
   return (
-    <Show when={!props.filtering || shown().length || props.node.error}>
-      <div class="aws-region">
-        <div class="aws-region-head">
-          <button class="aws-toggle" aria-expanded={isOpen()} onClick={() => setOpen(!isOpen())}>
-            <Icon name={isOpen() ? "arrow-down" : "chevron-left"} size={13} />
-            <span class="mono">{props.node.region}</span>
-          </button>
-          <span class="aws-muted">{props.filtering ? `${shown().length} de ${props.node.instances.length}` : props.node.instances.length}</span>
-        </div>
-        <Show when={props.node.error}>{(e) => <ErrorLine error={e()} onRetry={props.busy ? undefined : props.onRetry} />}</Show>
-        <Show when={isOpen() && shown().length}>
-          <div class="list aws-list">
-            <For each={shown().slice(0, limit())}>{(i) => {
-              const t = { profile: props.profile, region: props.node.region, instance: i };
-              return (
-                <InstanceRow target={t} overview={props.overview} favorite={props.isFavorite(props.profile, props.node.region, i.id)}
-                  onFavorite={() => props.onFavorite({ profile: props.profile, region: props.node.region, id: i.id })}
-                  onShell={() => props.onShell(t)} onSsh={() => props.onSsh(t)} onForward={() => props.onForward(t)} />
-              );
-            }}</For>
-            <Show when={shown().length > limit()}>
-              <div class="row"><Button small onClick={() => setLimit(limit() + PAGE)}>Mostrar mais {Math.min(PAGE, shown().length - limit())} de {shown().length - limit()}</Button></div>
-            </Show>
-          </div>
-        </Show>
+    <div class="aws-table" role="table" aria-label="Instâncias">
+      <div class="aws-tr aws-th" role="row">
+        <span role="columnheader">Instância</span>
+        <span role="columnheader">{props.showClient ? "Cliente" : "Região"}</span>
+        <span role="columnheader" class="aws-col-ip">IP privado</span>
+        <span role="columnheader">Estado</span>
+        <span role="columnheader">SSM</span>
+        <span role="columnheader" class="aws-col-actions"><span class="sr-only">Ações</span></span>
       </div>
-    </Show>
+      <For each={props.rows.slice(0, limit())}>{(r) => <InstanceRow row={r} {...props} />}</For>
+      <Show when={props.rows.length > limit()}>
+        <div class="aws-more"><Button small onClick={() => setLimit(limit() + PAGE)}>Mostrar mais {Math.min(PAGE, props.rows.length - limit())} de {props.rows.length - limit()}</Button></div>
+      </Show>
+    </div>
   );
 }
 
-function InstanceRow(props: {
-  target: Target;
-  overview: AwsOverview;
-  favorite: boolean;
-  showWhere?: boolean;
-  onFavorite: () => void;
-  onShell: () => void;
-  onSsh: () => void;
-  onForward: () => void;
-}) {
-  const i = () => props.target.instance;
+function InstanceRow(props: RowActions & { row: Row; overview: AwsOverview; showClient?: boolean }) {
+  const i = () => props.row.instance;
   const why = () => unavailable(i(), props.overview);
-  const forget = async () => {
-    try {
-      const removed = await api.awsForgetHostKey(i().id);
-      toast(removed ? "Chave do host esquecida. A próxima conexão SSH pede confirmação." : "Não havia chave salva para esta instância.", "info");
-    } catch (e) { toast(errorMessage(e), "error"); }
+  const fav = () => props.isFavorite(props.row);
+  return (
+    <div class="aws-tr" role="row" classList={{ dim: i().ssm === "unmanaged" || (!!i().state && i().state !== "running") }}>
+      <div class="aws-cell-name" role="cell">
+        <span class="name">{i().name || <span class="aws-muted">sem nome</span>}</span>
+        <button class="aws-id mono" title="Copiar o ID" aria-label={`Copiar o ID ${i().id}`} onClick={() => void copy(i().id, "ID copiado")}>{i().id}<Icon name="copy" size={12} /></button>
+      </div>
+      <span role="cell" class="aws-cell-where">
+        <Show when={props.showClient} fallback={<span class="mono">{props.row.region}</span>}>
+          <span>{props.row.client}</span><span class="aws-muted mono">{props.row.region}</span>
+        </Show>
+      </span>
+      <span role="cell" class="mono aws-col-ip">{i().private_ip || <span class="aws-muted">sem IP</span>}</span>
+      <span role="cell" class="aws-state"><span class="aws-dot" classList={{ running: i().state === "running" }} />{i().state ? stateText[i().state] ?? i().state : <span class="aws-muted">Híbrida</span>}</span>
+      <span role="cell" class="aws-state" title={i().platform || undefined}><span class={`aws-dot ${i().ssm}`} />{ssmLabel[i().ssm]}</span>
+      <div class="aws-col-actions" role="cell">
+        <span class="aws-actions" title={why() ?? undefined}>
+          <Button small icon="terminal" disabled={!!why()} onClick={() => props.onShell(props.row)}>Terminal</Button>
+          <button class="icon-btn" disabled={!!why()} aria-label={`SSH em ${i().name || i().id}`} title="SSH via Session Manager" onClick={() => props.onSsh(props.row)}><Icon name="key" size={15} /></button>
+          <button class="icon-btn" disabled={!!why()} aria-label={`Port forward para ${i().name || i().id}`} title="Port forward via Session Manager" onClick={() => props.onForward(props.row)}><Icon name="route" size={15} /></button>
+        </span>
+        <button class="icon-btn aws-star" classList={{ on: fav() }} aria-pressed={fav()}
+          aria-label={fav() ? `Tirar ${i().name || i().id} das favoritas` : `Fixar ${i().name || i().id} nas favoritas`}
+          title={fav() ? "Tirar das favoritas" : "Fixar nas favoritas"} onClick={() => props.onFavorite(props.row)}>
+          <Icon name="star" size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ClientDialog(props: { client: Client; limited: number; onRegions: () => void; onSave: (name: string, profile: string | null) => void; onClose: () => void }) {
+  const [name, setName] = createSignal(props.client.name);
+  const [profile, setProfile] = createSignal(props.client.access);
+  const save = () => {
+    const n = name().trim() || props.client.access;
+    if (n.length > 60) return invalid("Nome do cliente", "Nome do cliente: use até 60 caracteres.");
+    props.onSave(n, props.client.profiles.length > 1 ? profile() : null);
   };
   return (
-    <div class="row aws-row">
-      <button class="icon-btn aws-star" classList={{ on: props.favorite }} aria-pressed={props.favorite}
-        aria-label={props.favorite ? `Tirar ${i().name || i().id} das favoritas` : `Fixar ${i().name || i().id} no topo`}
-        title={props.favorite ? "Tirar das favoritas" : "Fixar no topo"} onClick={props.onFavorite}>
-        <Icon name={props.favorite ? "check" : "plus"} size={14} />
-      </button>
-      <div class="meta">
-        <div class="name">{i().name || <span class="aws-muted">(sem nome)</span>}</div>
-        <div class="sub"><span class="mono">{i().id}</span>{i().private_ip ? ` · ${i().private_ip}` : ""}{i().platform ? ` · ${i().platform}` : ""}
-          <Show when={props.showWhere}>{` · ${props.target.profile} · ${props.target.region}`}</Show></div>
+    <Modal title="Editar cliente" onClose={props.onClose}
+      footer={<><Button onClick={props.onClose}>Cancelar</Button><Button variant="primary" onClick={save}>Salvar</Button></>}>
+      <div class="form">
+        <Field label="Nome do cliente" hint="Só neste computador. Vazio volta para o nome do perfil.">
+          <input value={name()} maxLength={60} onInput={(e) => setName(e.currentTarget.value)} onKeyDown={(e) => e.key === "Enter" && save()} autofocus placeholder={props.client.access} />
+        </Field>
+        <Show when={props.client.profiles.length > 1}>
+          <Field label="Acessar com o perfil" hint="Usado para abrir terminal, SSH e port forward nas instâncias deste cliente.">
+            <select value={profile()} onChange={(e) => setProfile(e.currentTarget.value)}>
+              <For each={props.client.profiles}>{(p) => <option value={p}>{p}</option>}</For>
+            </select>
+          </Field>
+        </Show>
+        <div class="field">
+          <span class="field-label">Regiões mapeadas</span>
+          <div class="aws-tool-row">
+            <span>{props.limited ? (props.limited === 1 ? "1 região escolhida" : `${props.limited} regiões escolhidas`) : "Todas as regiões habilitadas da conta"}</span>
+            <Button small icon="settings" onClick={props.onRegions}>Escolher</Button>
+          </div>
+        </div>
+        <Show when={props.client.account}><p class="field-hint">Conta <span class="mono">{props.client.account}</span>{props.client.profiles.length ? `, perfis ${props.client.profiles.join(", ")}` : ""}.</p></Show>
       </div>
-      <Show when={i().state}><Badge tone={i().state === "running" ? "blue" : "gray"}>{i().state}</Badge></Show>
-      <Badge tone={ssmTone[i().ssm]}>SSM {ssmText[i().ssm]}</Badge>
-      <div class="aws-actions" title={why() ?? undefined}>
-        <Button small icon="terminal" disabled={!!why()} onClick={props.onShell}>Terminal</Button>
-        <Button small icon="key" disabled={!!why()} onClick={props.onSsh}>SSH</Button>
-        <Button small icon="route" disabled={!!why()} onClick={props.onForward}>Porta</Button>
-      </div>
-      <button class="icon-btn" aria-label={`Copiar o ID ${i().id}`} title="Copiar ID" onClick={() => void copy(i().id, "ID copiado")}><Icon name="copy" size={14} /></button>
-      <button class="icon-btn" aria-label={`Esquecer a chave SSH salva de ${i().id}`} title="Esquecer chave do host" onClick={() => void forget()}><Icon name="unlink" size={14} /></button>
-    </div>
+    </Modal>
   );
 }
 
@@ -535,6 +678,12 @@ function SshDialog(props: { target: Target; onClose: () => void }) {
   const [identity, setIdentity] = createSignal<string | null>(null);
   const [key, setKey] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
+  const forget = async () => {
+    try {
+      const removed = await api.awsForgetHostKey(props.target.instance.id);
+      toast(removed ? "Chave do servidor esquecida. A próxima conexão pede confirmação." : "Não havia chave salva para esta instância.", "info");
+    } catch (e) { toast(errorMessage(e), "error"); }
+  };
   const connect = async () => {
     if (!identity() && !username().trim()) return invalid("Usuário", `Usuário: ${BLANK.toLowerCase()}`);
     if (!identity() && !key()) return invalid("Chave SSH", "Escolha uma chave SSH do cofre, ou uma identidade.");
@@ -562,6 +711,7 @@ function SshDialog(props: { target: Target; onClose: () => void }) {
           <Field label="Usuário"><input value={username()} onInput={(e) => setUsername(e.currentTarget.value)} placeholder="ec2-user, ubuntu, admin…" /></Field>
           <Field label="Chave SSH"><ItemSelect kind="ssh_key" value={key()} onChange={setKey} none={identity() ? "Da identidade" : "Escolha…"} /></Field>
         </div>
+        <p class="field-hint">A instância foi reinstalada e a chave mudou? <button class="link-like" onClick={() => void forget()}>Esquecer a chave salva</button></p>
       </div>
     </Modal>
   );

@@ -114,10 +114,12 @@ pub fn parse(text: &str) -> Vec<Profile> {
             } else {
                 None
             };
+            // `aws login` sessions name the user ARN, which carries the account.
             let account = role_arn
                 .as_deref()
                 .and_then(account_of_arn)
-                .or_else(|| get("sso_account_id"));
+                .or_else(|| get("sso_account_id"))
+                .or_else(|| get("login_session").as_deref().and_then(account_of_arn));
             let profile = Profile {
                 name: name.clone(),
                 region: get("region"),
@@ -323,6 +325,7 @@ source_profile = self
         );
         assert_eq!(get(&p, "prod").account.as_deref(), Some("222222222222"));
         assert_eq!(get(&p, "master").sign_in.as_deref(), Some("login"));
+        assert_eq!(get(&p, "master").account.as_deref(), Some("111111111111"), "from the login session ARN");
         assert_eq!(get(&p, "sso-team").sign_in.as_deref(), Some("sso"));
         assert_eq!(get(&p, "sso-team").account.as_deref(), Some("444444444444"));
         assert_eq!(get(&p, "default").sign_in.as_deref(), Some("keys"));

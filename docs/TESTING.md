@@ -119,7 +119,7 @@ Para conferir à mão, com uma conta real: um perfil mestre, perfis de assume ro
 2. Com a sessão expirada, *esperado:* "Sessão expirada". Clique em **Entrar na AWS**, conclua o login na aba que abre e clique no ícone de verificar. *Esperado:* "Sessão ativa".
 3. **Mapear tudo** e confirme. *Esperado:* a barra mostra conta e região e o tempo; as regiões aparecem conforme terminam. **Cancelar** no meio para e guarda o que chegou ("incompleto").
 4. Num perfil sem permissão de `ssm:DescribeInstanceInformation`, *esperado:* "Falta a permissão ssm:DescribeInstanceInformation" naquela região, e as outras mapeadas. Num papel que o mestre não pode assumir, *esperado:* "Sem permissão para assumir …" no perfil.
-5. Busque por nome, ID ou IP, e use "Só online no SSM" e os filtros de perfil e região.
+5. *Esperado:* um cartão por cliente (conta AWS), com os perfis da mesma conta juntos e cada instância uma vez só; contas e regiões sem instâncias não aparecem, e os erros ficam no aviso do topo ("Ver detalhes"). Renomeie um cliente e troque o perfil de acesso no lápis. Busque por cliente, nome, ID ou IP, e use "Só online no SSM" e os filtros de cliente e região.
 6. Fixe uma instância. *Esperado:* ela aparece em **Favoritas**, no topo.
 7. Numa instância online, **Terminal**. *Esperado:* uma aba com o shell da instância. Numa offline ou não gerenciada, as ações ficam desativadas, e passar o mouse diz por quê.
 8. **SSH** com uma chave do cofre e o usuário da AMI (`ec2-user`, `ubuntu`). *Esperado:* na primeira vez, pede para confirmar a impressão digital; depois, conecta direto.

@@ -68,6 +68,16 @@ pub struct AwsSettings {
     /// Regions to map per profile; a profile absent here maps every enabled region.
     pub regions: BTreeMap<String, Vec<String>>,
     pub favorites: Vec<Favorite>,
+    /// Per account (or "profile:<name>" when the account is unknown): the name the screen shows
+    /// for that client and the profile its sessions use.
+    pub clients: BTreeMap<String, ClientPrefs>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ClientPrefs {
+    pub name: String,
+    pub profile: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -557,8 +567,20 @@ pub async fn aws_save_settings(
         check_region(&f.region)?;
         check_instance(&f.id)?;
     }
+    for (key, c) in &settings.clients {
+        if key.len() > 140 || c.name.chars().count() > 60 || c.name.chars().any(char::is_control) {
+            return Err(CmdError::new("invalid", "Nome de cliente inválido: use até 60 caracteres."));
+        }
+        if let Some(p) = &c.profile {
+            profile(&profiles, p)?;
+        }
+    }
     let mut clean = settings;
     clean.regions.retain(|_, r| !r.is_empty());
+    for c in clean.clients.values_mut() {
+        c.name = c.name.trim().to_string();
+    }
+    clean.clients.retain(|_, c| !c.name.is_empty() || c.profile.is_some());
     clean.favorites.dedup();
     state
         .vessel
