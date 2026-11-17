@@ -313,7 +313,9 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .confirm-text { margin: 0; color: var(--text-2); white-space: pre-line; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes pop { from { opacity: 0; transform: translateY(6px); } }
-.toasts { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 100; max-width: 420px; }
+/* Top center: over a dialog that is only its title, never its buttons. Clicks pass through, so a
+   message can never block what is under it. */
+.toasts { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 100; width: max-content; max-width: min(520px, calc(100vw - 32px)); pointer-events: none; }
 .toast { padding: 11px 14px 11px 16px; border-radius: var(--r-md); background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); animation: pop .16s; font-size: 13px; position: relative; }
 .toast::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--text-3); }
 .toast-error::before { background: var(--danger); }
@@ -470,8 +472,8 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius
 .toast.leaving { animation: toast-out .18s var(--ease-in) forwards; pointer-events: none; }
 @keyframes fade-out { to { opacity: 0; } }
 @keyframes pop-out { to { opacity: 0; transform: translateY(4px) scale(.99); } }
-@keyframes toast-in { from { opacity: 0; transform: translateX(14px); } }
-@keyframes toast-out { to { opacity: 0; transform: translateX(14px); } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-10px); } }
 
 /* Screens of the sign-in flow enter softly. */
 .auth-card, .welcome-inner { animation: screen-in .26s var(--ease-out); }

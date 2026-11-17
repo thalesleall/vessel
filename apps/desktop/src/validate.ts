@@ -9,8 +9,9 @@ export const BLANK = "Não pode ficar em branco.";
  * itself), or null when the problem does not belong to one field. Returns false, so callers can
  * `return invalid(...)`. */
 export function invalid(target: string | HTMLElement | null, message: string): false {
-  toast(message, "error");
-  if (!target) return false;
+  // The message shows at the field when there is one (focused and scrolled into view), and as a
+  // floating message otherwise, so it is never shown twice.
+  if (!target) return toast(message, "error"), false;
   let field: HTMLElement | null | undefined;
   let control: HTMLElement | null | undefined;
   if (typeof target === "string") {
@@ -23,7 +24,7 @@ export function invalid(target: string | HTMLElement | null, message: string): f
     control = target;
     field = target.closest<HTMLElement>(".field, [data-field]") ?? target.parentElement;
   }
-  if (!field) return false;
+  if (!field) return toast(message, "error"), false;
   // A checkbox's label is a row: its message goes on its own line below it.
   const row = !field.matches(".field, [data-field]");
   const old = row ? field.nextElementSibling : field.querySelector(".field-error");
@@ -46,11 +47,12 @@ export function invalid(target: string | HTMLElement | null, message: string): f
   if (control) {
     control.setAttribute("aria-invalid", "true");
     control.focus({ preventScroll: true });
-    control.addEventListener("input", clear, { once: true });
-    control.addEventListener("change", clear, { once: true });
-  } else {
-    field.addEventListener("change", clear, { once: true });
   }
+  // Any edit inside the field clears it (a list of checkboxes is fixed by ticking any of them).
+  field.addEventListener("input", clear, { once: true });
+  field.addEventListener("change", clear, { once: true });
+  control?.addEventListener("input", clear, { once: true });
+  control?.addEventListener("change", clear, { once: true });
   (control ?? field).scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
   return false;
 }

@@ -160,7 +160,8 @@ export const [toasts, setToasts] = createSignal<Toast[]>([]);
 let toastId = 0;
 export function toast(text: string, kind: Toast["kind"] = "info") {
   const id = ++toastId;
-  setToasts((t) => [...t, { id, text, kind }]);
+  // The same text again replaces the old one, and at most three show at once.
+  setToasts((t) => [...t.filter((x) => x.text !== text), { id, text, kind }].slice(-3));
   setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "error" ? 7000 : 3500);
 }
 
