@@ -1,5 +1,5 @@
 import { For, Show, createResource, createSignal } from "solid-js";
-import { api, type AdminUser, type Settings } from "../api";
+import { api, type AdminUser, type BackgroundSettings, type Settings } from "../api";
 import { attempt, checkForUpdate, copy, refreshData, settings, settingsItem, status, updateStatus } from "../store";
 import { installUpdate } from "../update";
 import { Badge, Button, Field, Icon, Modal, confirmAction, timeAgo } from "../ui";
@@ -17,6 +17,7 @@ export function SettingsView() {
         <ThemeSwitch />
       </div>
       <Appearance />
+      <Background />
       <Account />
       <Show when={!status()?.local}><Devices /></Show>
       <Conflicts />
@@ -41,6 +42,42 @@ function Updates() {
         </Show>
       </div>
     </div>
+  );
+}
+
+function Background() {
+  const [bg, { mutate }] = createResource(() => api.backgroundSettings());
+  const change = async (patch: Partial<BackgroundSettings>) => {
+    const current = bg();
+    if (!current) return;
+    if (patch.keep_unlocked_for_schedules && !(await confirmAction({
+      title: "Manter o cofre aberto?",
+      message: "Enquanto houver agendamentos ativos, o Vessel não vai se bloquear sozinho por inatividade. Quem usar este computador nesse tempo terá acesso aos seus hosts, senhas e chaves.",
+      confirm: "Manter aberto",
+    }))) return;
+    const next = await attempt(() => api.setBackgroundSettings({ ...current, ...patch }));
+    if (next) mutate(next);
+  };
+  return (
+    <Show when={bg()}>
+      {(b) => (
+        <div class="panel">
+          <h3>Segundo plano</h3>
+          <p>Snippets agendados só rodam com o Vessel aberto. Estas opções valem só para este computador.</p>
+          <div class="form" style={{ gap: "10px" }}>
+            <label class="check"><input type="checkbox" checked={b().close_to_tray} onChange={(e) => change({ close_to_tray: e.currentTarget.checked })} />
+              Fechar a janela deixa o Vessel na bandeja (para sair, use Sair no ícone da bandeja)</label>
+            <label class="check"><input type="checkbox" checked={b().autostart} onChange={(e) => change({ autostart: e.currentTarget.checked })} />
+              Iniciar com o Windows, na bandeja</label>
+            <label class="check"><input type="checkbox" checked={b().keep_unlocked_for_schedules} onChange={(e) => change({ keep_unlocked_for_schedules: e.currentTarget.checked })} />
+              Não bloquear por inatividade enquanto houver agendamentos ativos</label>
+            <Show when={b().keep_unlocked_for_schedules}>
+              <p class="field-hint" style={{ margin: 0, color: "var(--warn)" }}>O cofre fica aberto enquanto houver agendamentos. Bloqueie com Ctrl+L quando sair de perto.</p>
+            </Show>
+          </div>
+        </div>
+      )}
+    </Show>
   );
 }
 

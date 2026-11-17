@@ -27,8 +27,9 @@ const items = [
   host(6, "grafana", "monitor.interno", { pending: true }),
   { vault_id: personal, id: id(30), version: 1, pending: false, entity: { type: "identity", data: { label: "deploy", username: "deploy", password: null, ssh_key_id: id(31) } } },
   { vault_id: personal, id: id(31), version: 1, pending: false, entity: { type: "ssh_key", data: { label: "id_ed25519", private_key: "-----BEGIN OPENSSH PRIVATE KEY-----", public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHf0ZsN ana@pc", passphrase: "x", certificate: null } } },
-  { vault_id: personal, id: id(40), version: 1, pending: false, entity: { type: "snippet", data: { label: "Status do nginx", script: "sudo systemctl status nginx", tags: [] } } },
+  { vault_id: personal, id: id(40), version: 1, pending: false, entity: { type: "snippet", data: { label: "Status do nginx", script: "sudo systemctl status nginx", tags: [], target: { kind: "hosts", host_ids: [id(1), id(2)] }, confirm: false, schedules: [{ cron: "0 7 * * 1-5", enabled: true }], agent_allowed: true, timeout_secs: 60 } } },
   { vault_id: personal, id: id(41), version: 1, pending: false, entity: { type: "snippet", data: { label: "Uso de disco", script: "df -h | sort -k5 -r | head", tags: [] } } },
+  { vault_id: personal, id: id(42), version: 1, pending: false, entity: { type: "snippet", data: { label: "Ligar o PC do escritório", script: "wakeonlan 3c:7c:3f:1a:22:9b", tags: [], target: { kind: "local", shell: { kind: "wsl", distro: "Ubuntu-24.04" } }, confirm: true, schedules: [], agent_allowed: false, timeout_secs: 30 } } },
   { vault_id: personal, id: id(50), version: 1, pending: false, entity: { type: "terminal_profile", data: { label: "PowerShell", shell: { kind: "pwsh" }, args: [], cwd: "", env: {}, color: "" } } },
   { vault_id: personal, id: id(51), version: 1, pending: false, entity: { type: "terminal_profile", data: { label: "Ubuntu-24.04", shell: { kind: "wsl", distro: "Ubuntu-24.04" }, args: [], cwd: "", env: {}, color: "" } } },
   { vault_id: personal, id: id(52), version: 1, pending: false, entity: { type: "terminal_profile", data: { label: "Prompt de Comando", shell: { kind: "cmd" }, args: [], cwd: "", env: {}, color: "" } } },
@@ -53,6 +54,20 @@ const status = () => ({
 });
 const recoveryKey = "A1B2-C3D4-E5F6-0718-293A-4B5C-6D7E-8F90-1A2B-3C4D-5E6F-7081-92A3-B4C5-D6E7-F809";
 const outcome = () => ({ imported: 14, skipped_duplicates: 3, recovery_key: localMode ? null : recoveryKey, backup_path: "C:\Users\ana\AppData\Roaming\dev.vessel.desktop\backups\vessel-1794540000-antes-de-conectar.db", status: status() });
+
+let mockPaused = false;
+let mockBackground = { close_to_tray: true, autostart: false, keep_unlocked_for_schedules: false };
+const now0 = Math.floor(Date.now() / 1000);
+const mockRuns: Record<string, unknown>[] & { snippet_id?: string }[] = [
+  { id: id(800), snippet_id: id(40), label: "Status do nginx", origin: "scheduled", status: "failed", target: "2 hosts", started_at: now0 - 3600, finished_at: now0 - 3598, note: null,
+    results: [
+      { target: "api-prod-01", exit_code: 0, stdout: "● nginx.service - A high performance web server\n     Active: active (running) since Mon 2026-11-16 08:12:01 UTC\n", stderr: "", error: null, timed_out: false, truncated: false, duration_ms: 812 },
+      { target: "api-prod-02", exit_code: 3, stdout: "● nginx.service - A high performance web server\n     Active: failed (Result: exit-code)\n", stderr: "", error: null, timed_out: false, truncated: false, duration_ms: 790 },
+    ] },
+  { id: id(801), snippet_id: id(40), label: "Status do nginx", origin: "scheduled", status: "missed", target: "", started_at: now0 - 90_000, finished_at: null, results: [], note: "Horário de 16/11 07:00 não rodou: o Vessel estava fechado." },
+  { id: id(802), snippet_id: id(40), label: "Status do nginx", origin: "agent", status: "ok", target: "2 hosts", started_at: now0 - 200_000, finished_at: now0 - 199_999, note: null,
+    results: [{ target: "api-prod-01", exit_code: 0, stdout: "active\n", stderr: "", error: null, timed_out: false, truncated: false, duration_ms: 640 }] },
+];
 
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   status,
@@ -101,6 +116,26 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     { at: Math.floor(Date.now() / 1000) - 300, tool: "create_item", summary: "kind=host", ok: true, reason: null, error: null },
     { at: Math.floor(Date.now() / 1000) - 320, tool: "create_item", summary: "kind=identity", ok: false, reason: "Só você pode alterar esse tipo de item", error: "agents cannot create identity items" },
   ],
+  scheduler_status: () => ({ paused: mockPaused, running: [], keep_unlocked: false, schedules: [
+    { snippet_id: id(40), index: 0, cron: "0 7 * * 1-5", enabled: true, next: Math.floor(Date.now() / 1000) + 50_000, error: null },
+  ] }),
+  set_schedules_paused: (a) => { mockPaused = Boolean(a.paused); return null; },
+  snippet_runs: (a) => mockRuns.filter((r) => !a.snippetId || r.snippet_id === a.snippetId),
+  clear_snippet_runs: () => { mockRuns.length = 0; return null; },
+  run_snippet: (a) => {
+    const r = { id: id(900 + mockRuns.length), snippet_id: a.snippetId as string, label: "Ligar o PC do escritório", origin: "manual", status: "ok", target: "Ubuntu-24.04",
+      started_at: Math.floor(Date.now() / 1000), finished_at: Math.floor(Date.now() / 1000), note: null,
+      results: [{ target: "Ubuntu-24.04", exit_code: 0, stdout: "Sending magic packet to 255.255.255.255:9 with 3c:7c:3f:1a:22:9b\n", stderr: "", error: null, timed_out: false, truncated: false, duration_ms: 412 }] };
+    mockRuns.unshift(r);
+    return r;
+  },
+  cron_preview: (a) => {
+    if (String(a.expr).trim().split(/\s+/).length !== 5) throw { code: "invalid", message: "Use cinco campos: minuto hora dia mês dia-da-semana (por exemplo \"0 7 * * 1-5\")." };
+    const now = Math.floor(Date.now() / 1000);
+    return [now + 3600, now + 90_000, now + 176_400];
+  },
+  get_background_settings: () => mockBackground,
+  set_background_settings: (a) => { mockBackground = { close_to_tray: Boolean(a.closeToTray), autostart: Boolean(a.autostart), keep_unlocked_for_schedules: Boolean(a.keepUnlockedForSchedules) }; return mockBackground; },
   attach: (a) => {
     const channel = a.onData as { id: number };
     const internals = (window as unknown as { __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void } }).__TAURI_INTERNALS__;

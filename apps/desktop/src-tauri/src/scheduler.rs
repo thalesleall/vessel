@@ -26,8 +26,10 @@ const LAST_KEY: &str = "scheduler-last";
 /// What the scheduler observed, kept in memory.
 pub struct SchedulerState {
     started_at: i64,
-    /// Periods (start, end) when the app was open with the vault locked.
+    /// Periods (start, end) when the app was open with the vault locked. A period ends at the
+    /// first tick that finds the vault unlocked again.
     locked: Mutex<Vec<(i64, i64)>>,
+    was_locked: std::sync::atomic::AtomicBool,
 }
 
 impl Default for SchedulerState {
@@ -35,6 +37,7 @@ impl Default for SchedulerState {
         Self {
             started_at: now(),
             locked: Mutex::new(Vec::new()),
+            was_locked: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }
@@ -60,7 +63,13 @@ struct Due {
     snippet_id: Uuid,
     label: String,
     cron: Cron,
+    /// When this schedule was first seen: times before it never count as missed.
+    since: i64,
 }
+
+/// First time each schedule was seen (by snippet and expression), sealed in the vault: a schedule
+/// created now must not report the times before it existed as missed.
+const SEEN_KEY: &str = "scheduler-seen";
 
 fn local(ts: i64) -> DateTime<Local> {
     Local
@@ -131,7 +140,14 @@ async fn tick(state: &AppState) {
                 Some((_, end)) if now_ts - *end <= 2 * TICK.as_secs() as i64 => *end = now_ts,
                 _ => locked.push((now_ts, now_ts)),
             }
+            state.scheduler.was_locked.store(true, std::sync::atomic::Ordering::Relaxed);
             return;
+        }
+        if state.scheduler.was_locked.swap(false, std::sync::atomic::Ordering::Relaxed)
+            && let Some((_, end)) = state.scheduler.locked.lock().unwrap_or_else(|e| e.into_inner()).last_mut()
+        {
+            // Unlocked somewhere since the last tick: count that whole gap as locked.
+            *end = now_ts;
         }
         let Ok(personal) = vessel.personal_vault() else {
             return;
@@ -139,7 +155,7 @@ async fn tick(state: &AppState) {
         let Ok(items) = vessel.items(Some(EntityKind::Snippet)) else {
             return;
         };
-        let due: Vec<Due> = items
+        let due = items
             .iter()
             .filter(|i| i.vault_id == personal)
             .filter_map(|i| match &i.entity {
@@ -155,10 +171,23 @@ async fn tick(state: &AppState) {
                             snippet_id: id,
                             label: s.label.clone(),
                             cron: Cron::parse(&x.cron).ok()?,
+                            since: 0,
                         })
+                        .map(|d| (format!("{id}|{}", x.cron.trim()), d))
                     })
             })
+            .collect::<Vec<_>>();
+        let mut seen: std::collections::BTreeMap<String, i64> =
+            vessel.device_sealed(SEEN_KEY).ok().flatten().unwrap_or_default();
+        seen.retain(|k, _| due.iter().any(|(key, _)| key == k));
+        let due: Vec<Due> = due
+            .into_iter()
+            .map(|(key, mut d)| {
+                d.since = *seen.entry(key).or_insert(now_ts);
+                d
+            })
             .collect();
+        let _ = vessel.set_device_sealed(SEEN_KEY, &seen);
         let last: i64 = vessel
             .device_plain(LAST_KEY)
             .ok()
@@ -270,21 +299,28 @@ fn plan(
     }
     let slack = TICK.as_secs() as i64;
     for (index, d) in due.iter().enumerate() {
+        let from = last.max(d.since);
+        if from >= now {
+            continue;
+        }
         let times: Vec<i64> = d
             .cron
-            .between(local(last), local(now), 10_000)
+            .between(local(from), local(now), 10_000)
             .iter()
             .map(DateTime::timestamp)
             .collect();
         let Some(&latest) = times.last() else {
             continue;
         };
-        let on_time = now - latest <= GRACE_SECS;
+        let in_lock = |t: i64| locked.iter().any(|(a, b)| t >= a - slack && t <= *b);
+        // A time that came while the vault was locked is skipped, even if the vault opened
+        // within the grace period.
+        let on_time = now - latest <= GRACE_SECS && latest >= started_at && !in_lock(latest);
         let (mut closed, mut was_locked, mut other) = (Vec::new(), Vec::new(), Vec::new());
         for &t in times.iter().filter(|t| !(on_time && **t == latest)) {
             if t < started_at {
                 closed.push(t);
-            } else if locked.iter().any(|(a, b)| t >= a - slack && t <= b + slack) {
+            } else if in_lock(t) {
                 was_locked.push(t);
             } else {
                 other.push(t);
@@ -382,7 +418,19 @@ mod tests {
             snippet_id: Uuid::nil(),
             label: "s".into(),
             cron: Cron::parse(&format!("*/{minutes} * * * *")).unwrap(),
+            since: 0,
         }]
+    }
+
+    #[test]
+    fn a_new_schedule_does_not_report_the_past() {
+        // Last tick at 08:00 (before Vessel was closed); this schedule was first seen at 10:00:10.
+        let mut due = every(30);
+        due[0].since = ts("2026-06-10 10:00:10");
+        let a = plan(&due, ts("2026-06-10 08:00:00"), ts("2026-06-10 10:00:20"), false, ts("2026-06-10 10:00:05"), &[]);
+        assert!(a.is_empty(), "{a:?}");
+        let a = plan(&due, ts("2026-06-10 10:00:20"), ts("2026-06-10 10:30:05"), false, ts("2026-06-10 10:00:05"), &[]);
+        assert_eq!(a, vec![Action::Run { index: 0, at: ts("2026-06-10 10:30:00") }]);
     }
 
     #[test]
@@ -431,6 +479,17 @@ mod tests {
     }
 
     #[test]
+    fn a_time_while_locked_does_not_run_right_after_unlocking() {
+        // 10:30 came while locked; the vault opened at 10:30:40 (first unlocked tick 10:30:50).
+        let locked = [(ts("2026-06-10 10:01:00"), ts("2026-06-10 10:30:50"))];
+        let a = plan(&every(5), ts("2026-06-10 10:00:50"), ts("2026-06-10 10:30:50"), false, ts("2026-06-10 09:00:00"), &locked);
+        assert!(!a.iter().any(|x| matches!(x, Action::Run { .. })), "{a:?}");
+        // The next time runs normally.
+        let a = plan(&every(5), ts("2026-06-10 10:30:50"), ts("2026-06-10 10:35:05"), false, ts("2026-06-10 09:00:00"), &locked);
+        assert_eq!(a, vec![Action::Run { index: 0, at: ts("2026-06-10 10:35:00") }]);
+    }
+
+    #[test]
     fn times_while_locked_are_skipped_not_run_late() {
         // Locked from 10:01 to 10:33, unlocked at 10:33:10: 10:05..10:30 were skipped, none runs late.
         let locked = [(ts("2026-06-10 10:01:00"), ts("2026-06-10 10:33:00"))];
@@ -456,13 +515,13 @@ mod tests {
 
     #[test]
     fn times_while_closed_are_missed_and_the_current_one_runs() {
-        // Vessel closed 08:00-10:00 (started 10:00:05); at 10:00:10 the 10:00 time still runs.
+        // Vessel closed 08:00-09:59:50 (started then); at 10:00:10 the 10:00 time runs.
         let a = plan(
             &every(30),
             ts("2026-06-10 08:00:00"),
             ts("2026-06-10 10:00:10"),
             false,
-            ts("2026-06-10 10:00:05"),
+            ts("2026-06-10 09:59:50"),
             &[],
         );
         assert_eq!(a.len(), 2, "{a:?}");
@@ -477,6 +536,12 @@ mod tests {
                 at: ts("2026-06-10 10:00:00")
             }
         );
+    }
+
+    #[test]
+    fn a_time_just_before_opening_vessel_is_missed() {
+        let a = plan(&every(30), ts("2026-06-10 08:00:00"), ts("2026-06-10 10:00:10"), false, ts("2026-06-10 10:00:05"), &[]);
+        assert!(!a.iter().any(|x| matches!(x, Action::Run { .. })), "{a:?}");
     }
 
     #[test]

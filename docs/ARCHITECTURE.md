@@ -260,7 +260,18 @@ Um perfil guardado num cofre compartilhado que rode um programa próprio, argume
 
 As chaves privadas nunca vão para o disco em claro: são decifradas em memória no momento da conexão.
 
-### 9.4 Atualizações
+### 9.4 Snippets
+
+Um snippet tem um destino: nenhum (é colado num terminal), um shell deste computador ou um ou mais hosts SSH. Com destino, ele roda com um clique, pela paleta, por agendamento ou por um assistente de IA liberado.
+
+- **Local.** O shell roda sem janela, na pasta do usuário, com tempo máximo; ao estourar, o processo e tudo o que ele abriu são encerrados. PowerShell e Prompt de Comando recebem o script num arquivo temporário apagado ao fim; WSL e Git Bash, pela entrada padrão.
+- **SSH.** Um `exec` por host, em paralelo, pela mesma conexão do terminal (credenciais, jump hosts, referências resolvidas como em §9.3). Só conecta a servidores com chave já confirmada: uma chave desconhecida ou diferente recusa a execução, e nada aqui confirma chave nova.
+- **Quem pode rodar.** Por agendamento ou por um assistente, só snippets do cofre pessoal: num cofre compartilhado, outro membro poderia mudar o script que rodaria no computador de alguém. Rodar à mão um snippet de cofre compartilhado, ou marcado "pedir confirmação", mostra o script antes.
+- **Histórico.** Cada execução guarda origem (manual, agendada, agente), destino, código de saída e saída (até 64 KB por execução). Fica no próprio dispositivo, cifrado com a chave da conta, e não é sincronizado.
+- **Agendamento.** Expressões cron de cinco campos, no horário local, avaliadas a cada 15 s com o app aberto (fechar a janela deixa o Vessel na bandeja). Só com o cofre desbloqueado; um horário com o cofre bloqueado é registrado como pulado, e um que passou com o app fechado ou o computador suspenso, como perdido. Nenhum dos dois roda depois. O mesmo snippet nunca roda duas vezes ao mesmo tempo, e um botão (e o menu da bandeja) pausa todos os agendamentos. Uma falha agendada gera uma notificação do Windows.
+- **Bloqueio automático.** Por padrão continua valendo e para os agendamentos. A pessoa pode escolher não bloquear por inatividade enquanto houver agendamentos ativos, com aviso do risco.
+
+### 9.5 Atualizações
 
 O app consulta o `latest.json` do último release no GitHub ao abrir e a cada 10 minutos. Uma versão nova só é instalada depois que a pessoa confirma, e só se for exatamente a versão que ela viu. O instalador baixado tem de estar assinado com a chave do atualizador do projeto (Ed25519, formato minisign), cuja parte pública vem embutida no app; a assinatura cobre também o número da versão, então um instalador antigo e legítimo anunciado como versão nova é recusado, assim como qualquer versão que não seja mais nova que a instalada. Essa chave é independente do certificado de assinatura do Windows.
 
@@ -280,6 +291,8 @@ O que um assistente nunca pode fazer:
 - **Alterar identidades, chaves SSH e hosts conhecidos.** São só leitura.
 - **Aceitar a chave de um servidor.** Só conecta a servidores que a pessoa já confirmou no app. Sem isso, um assistente poderia apontar um host com senha salva para um servidor dele.
 - **Abrir uma porta para a rede**, mexer em conta, dispositivos, convites, membros ou rotação de chave, ou mudar o tempo de bloqueio automático.
+
+**Snippets liberados.** O assistente lista (`list_runnable_snippets`) e roda (`execute_snippet`) só os snippets do cofre pessoal em que a pessoa marcou a permissão para agentes, e nunca um que pede confirmação. Roda como está, no destino salvo, mesmo sem a permissão de digitar, e a execução vai para o histórico com a origem "agente". Nenhum assistente define destino, agendamento, confirmação, tempo máximo ou essa permissão, nem troca o script de um snippet que roda sozinho ou o endereço e as credenciais de um host em que ele roda.
 
 Sem a permissão de digitar, o assistente ainda abre e lê terminais, mas nada que execute comandos por conta própria: só shells embutidos sem argumentos, nenhum host com snippet de conexão. Também não pode **salvar** algo que a pessoa executaria depois sem reler: snippets, perfis com programa, argumentos ou ambiente próprios, e snippet de conexão num host.
 
@@ -302,5 +315,6 @@ Para não perder dados: o app grava um backup cifrado do banco antes de migrar; 
 - A confiança nas chaves de outras pessoas começa no primeiro contato; a conferência da impressão digital na aprovação é o que fecha essa janela.
 - O servidor vê quantos registros cada cofre tem e o tamanho deles arredondado para 256 bytes.
 - Registros antigos no formato 1 não protegem a versão nem a marca de exclusão até serem regravados, o que acontece sozinho na primeira sincronização de quem pode escrever no cofre.
-- O instalador do Windows ainda não tem certificado de assinatura de código (as atualizações são assinadas pela chave do atualizador, §9.4). macOS e Linux não têm instalador.
+- O instalador do Windows ainda não tem certificado de assinatura de código (as atualizações são assinadas pela chave do atualizador, §9.5). macOS e Linux não têm instalador.
+- Snippets agendados só rodam com o app aberto e o cofre desbloqueado; não há agendamento com o app fechado nem crontab no servidor.
 - Não há verificação de e-mail no cadastro. Num servidor com cadastro aberto, a tela de cadastro revela se um e-mail já tem conta.

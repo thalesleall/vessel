@@ -23,6 +23,16 @@ through the `@fontsource` packages listed under JavaScript.
 | [anyhow](https://github.com/dtolnay/anyhow) | 1.0.104 | MIT OR Apache-2.0 |
 | [argon2](https://github.com/RustCrypto/password-hashes/tree/master/argon2) | 0.5.3 | MIT OR Apache-2.0 |
 | [argon2](https://github.com/RustCrypto/password-hashes) | 0.6.0 | MIT OR Apache-2.0 |
+| [async-broadcast](https://github.com/smol-rs/async-broadcast) | 0.7.2 | MIT OR Apache-2.0 |
+| [async-channel](https://github.com/smol-rs/async-channel) | 2.5.0 | Apache-2.0 OR MIT |
+| [async-executor](https://github.com/smol-rs/async-executor) | 1.14.1 | Apache-2.0 OR MIT |
+| [async-io](https://github.com/smol-rs/async-io) | 2.6.0 | Apache-2.0 OR MIT |
+| [async-lock](https://github.com/smol-rs/async-lock) | 3.5.0 | Apache-2.0 OR MIT |
+| [async-process](https://github.com/smol-rs/async-process) | 2.5.0 | Apache-2.0 OR MIT |
+| [async-recursion](https://github.com/dcchut/async-recursion) | 1.2.0 | MIT OR Apache-2.0 |
+| [async-signal](https://github.com/smol-rs/async-signal) | 0.2.14 | Apache-2.0 OR MIT |
+| [async-task](https://github.com/smol-rs/async-task) | 4.7.1 | Apache-2.0 OR MIT |
+| [async-trait](https://github.com/dtolnay/async-trait) | 0.1.92 | MIT OR Apache-2.0 |
 | [atk](https://github.com/gtk-rs/gtk3-rs) | 0.18.2 | MIT |
 | [atk-sys](https://github.com/gtk-rs/gtk3-rs) | 0.18.2 | MIT |
 | [atomic-waker](https://github.com/smol-rs/atomic-waker) | 1.1.2 | Apache-2.0 OR MIT |
@@ -50,6 +60,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [block-buffer](https://github.com/RustCrypto/utils) | 0.12.1 | MIT OR Apache-2.0 |
 | [block-padding](https://github.com/RustCrypto/utils) | 0.4.2 | MIT OR Apache-2.0 |
 | [block2](https://github.com/madsmtm/objc2) | 0.6.2 | MIT |
+| [blocking](https://github.com/smol-rs/blocking) | 1.7.0 | Apache-2.0 OR MIT |
 | [blowfish](https://github.com/RustCrypto/block-ciphers) | 0.10.0 | MIT OR Apache-2.0 |
 | [brotli](https://github.com/dropbox/rust-brotli) | 9.1.3 | BSD-3-Clause AND MIT |
 | [brotli-decompressor](https://github.com/dropbox/rust-brotli-decompressor) | 6.3.2 | BSD-3-Clause/MIT |
@@ -79,6 +90,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [cmake](https://github.com/rust-lang/cmake-rs) | 0.1.58 | MIT OR Apache-2.0 |
 | [cmov](https://github.com/RustCrypto/utils) | 0.5.4 | Apache-2.0 OR MIT |
 | [combine](https://github.com/Marwes/combine) | 4.6.9 | MIT |
+| [concurrent-queue](https://github.com/smol-rs/concurrent-queue) | 2.5.0 | Apache-2.0 OR MIT |
 | [const-oid](https://github.com/RustCrypto/formats) | 0.10.3 | Apache-2.0 OR MIT |
 | [const-oid](https://github.com/RustCrypto/formats/tree/master/const-oid) | 0.9.6 | Apache-2.0 OR MIT |
 | [constant_time_eq](https://codeberg.org/cesarb/constant_time_eq) | 0.6.1 | CC0-1.0 OR MIT-0 OR Apache-2.0 |
@@ -147,10 +159,15 @@ through the `@fontsource` packages listed under JavaScript.
 | [elliptic-curve](https://github.com/RustCrypto/traits) | 0.14.3 | Apache-2.0 OR MIT |
 | [embed_plist](https://github.com/nvzqz/embed-plist-rs) | 1.2.2 | MIT OR Apache-2.0 |
 | [embed-resource](https://github.com/nabijaczleweli/rust-embed-resource) | 3.0.12 | MIT |
+| [endi](https://github.com/zeenix/endi) | 1.1.1 | MIT |
 | [enum_dispatch](https://gitlab.com/antonok/enum_dispatch) | 0.3.13 | MIT OR Apache-2.0 |
+| [enumflags2](https://github.com/meithecatte/enumflags2) | 0.7.12 | MIT OR Apache-2.0 |
+| [enumflags2_derive](https://github.com/meithecatte/enumflags2) | 0.7.12 | MIT OR Apache-2.0 |
 | [equivalent](https://github.com/indexmap-rs/equivalent) | 1.0.3 | Apache-2.0 OR MIT |
 | [erased-serde](https://github.com/dtolnay/erased-serde) | 0.4.11 | MIT OR Apache-2.0 |
 | [errno](https://github.com/lambda-fairy/rust-errno) | 0.3.15 | MIT OR Apache-2.0 |
+| [event-listener](https://github.com/smol-rs/event-listener) | 5.4.2 | Apache-2.0 OR MIT |
+| [event-listener-strategy](https://github.com/smol-rs/event-listener-strategy) | 0.5.4 | Apache-2.0 OR MIT |
 | [fallible-iterator](https://github.com/sfackler/rust-fallible-iterator) | 0.3.0 | MIT/Apache-2.0 |
 | [fallible-streaming-iterator](https://github.com/sfackler/fallible-streaming-iterator) | 0.1.9 | MIT/Apache-2.0 |
 | [fastrand](https://github.com/smol-rs/fastrand) | 2.5.0 | Apache-2.0 OR MIT |
@@ -176,6 +193,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [futures-core](https://github.com/rust-lang/futures-rs) | 0.3.34 | MIT OR Apache-2.0 |
 | [futures-executor](https://github.com/rust-lang/futures-rs) | 0.3.34 | MIT OR Apache-2.0 |
 | [futures-io](https://github.com/rust-lang/futures-rs) | 0.3.34 | MIT OR Apache-2.0 |
+| [futures-lite](https://github.com/smol-rs/futures-lite) | 2.6.1 | Apache-2.0 OR MIT |
 | [futures-macro](https://github.com/rust-lang/futures-rs) | 0.3.34 | MIT OR Apache-2.0 |
 | [futures-sink](https://github.com/rust-lang/futures-rs) | 0.3.34 | MIT OR Apache-2.0 |
 | [futures-task](https://github.com/rust-lang/futures-rs) | 0.3.34 | MIT OR Apache-2.0 |
@@ -210,6 +228,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [hashlink](https://github.com/djc/hashlink) | 0.12.2 | MIT OR Apache-2.0 |
 | [heck](https://github.com/withoutboats/heck) | 0.4.1 | MIT OR Apache-2.0 |
 | [heck](https://github.com/withoutboats/heck) | 0.5.0 | MIT OR Apache-2.0 |
+| [hermit-abi](https://github.com/hermit-os/hermit-rs) | 0.5.3 | MIT OR Apache-2.0 |
 | [hex](https://github.com/KokaKiwi/rust-hex) | 0.4.3 | MIT OR Apache-2.0 |
 | [hex-literal](https://github.com/RustCrypto/utils) | 1.1.0 | MIT OR Apache-2.0 |
 | [hkdf](https://github.com/RustCrypto/KDFs/) | 0.12.4 | MIT OR Apache-2.0 |
@@ -281,6 +300,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [lock_api](https://github.com/Amanieu/parking_lot) | 0.4.14 | MIT OR Apache-2.0 |
 | [log](https://github.com/rust-lang/log) | 0.4.35 | MIT OR Apache-2.0 |
 | [lru-slab](https://github.com/Ralith/lru-slab) | 0.1.3 | MIT OR Apache-2.0 OR Zlib |
+| [mac-notification-sys](https://github.com/h4llow3En/mac-notification-sys) | 0.6.15 | MIT/Apache-2.0 |
 | [markup5ever](https://github.com/servo/html5ever) | 0.39.0 | MIT OR Apache-2.0 |
 | [markup5ever](https://github.com/servo/html5ever) | 0.40.0 | MIT OR Apache-2.0 |
 | [matchers](https://github.com/hawkw/matchers) | 0.2.0 | MIT |
@@ -303,6 +323,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [nix](https://github.com/nix-rust/nix) | 0.28.0 | MIT |
 | [nix](https://github.com/nix-rust/nix) | 0.31.3 | MIT |
 | [nix](https://github.com/nix-rust/nix) | 0.32.0 | MIT |
+| [notify-rust](https://github.com/hoodie/notify-rust) | 4.19.0 | MIT OR Apache-2.0 |
 | [nu-ansi-term](https://github.com/nushell/nu-ansi-term) | 0.50.3 | MIT |
 | [num_enum](https://github.com/illicitonion/num_enum) | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
 | [num_enum_derive](https://github.com/illicitonion/num_enum) | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 |
@@ -332,6 +353,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [opaque-ke](https://github.com/facebook/opaque-ke) | 4.0.1 | Apache-2.0 OR MIT |
 | [openssl-probe](https://github.com/rustls/openssl-probe) | 0.2.2 | MIT OR Apache-2.0 |
 | [option-ext](https://github.com/soc/option-ext.git) | 0.2.0 | MPL-2.0 |
+| [ordered-stream](https://github.com/danieldg/ordered-stream) | 0.2.0 | MIT OR Apache-2.0 |
 | [osakit](https://github.com/mdevils/rust-osakit) | 0.3.1 | MIT OR Apache-2.0 |
 | [p256](https://github.com/RustCrypto/elliptic-curves) | 0.14.0 | Apache-2.0 OR MIT |
 | [p384](https://github.com/RustCrypto/elliptic-curves) | 0.14.0 | Apache-2.0 OR MIT |
@@ -339,6 +361,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [pageant](https://github.com/warp-tech/russh) | 0.2.5 | Apache-2.0 |
 | [pango](https://github.com/gtk-rs/gtk-rs-core) | 0.18.3 | MIT |
 | [pango-sys](https://github.com/gtk-rs/gtk-rs-core) | 0.18.0 | MIT |
+| [parking](https://github.com/smol-rs/parking) | 2.2.1 | Apache-2.0 OR MIT |
 | [parking_lot](https://github.com/Amanieu/parking_lot) | 0.12.5 | MIT OR Apache-2.0 |
 | [parking_lot_core](https://github.com/Amanieu/parking_lot) | 0.9.12 | MIT OR Apache-2.0 |
 | [password-hash](https://github.com/RustCrypto/traits/tree/master/password-hash) | 0.5.0 | MIT OR Apache-2.0 |
@@ -358,6 +381,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [phf_shared](https://github.com/rust-phf/rust-phf) | 0.13.1 | MIT |
 | [phf_shared](https://github.com/rust-phf/rust-phf) | 0.14.0 | MIT |
 | [pin-project-lite](https://github.com/taiki-e/pin-project-lite) | 0.2.17 | Apache-2.0 OR MIT |
+| [piper](https://github.com/smol-rs/piper) | 0.2.5 | MIT OR Apache-2.0 |
 | [pkcs1](https://github.com/RustCrypto/formats) | 0.8.0 | Apache-2.0 OR MIT |
 | [pkcs5](https://github.com/RustCrypto/formats) | 0.8.1 | Apache-2.0 OR MIT |
 | [pkcs8](https://github.com/RustCrypto/formats/tree/master/pkcs8) | 0.10.2 | Apache-2.0 OR MIT |
@@ -365,6 +389,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [pkg-config](https://github.com/rust-lang/pkg-config-rs) | 0.3.34 | MIT OR Apache-2.0 |
 | [plist](https://github.com/ebarnard/rust-plist/) | 1.10.3 | MIT |
 | [png](https://github.com/image-rs/image-png) | 0.18.1 | MIT OR Apache-2.0 |
+| [polling](https://github.com/smol-rs/polling) | 3.11.0 | Apache-2.0 OR MIT |
 | [poly1305](https://github.com/RustCrypto/universal-hashes) | 0.9.1 | Apache-2.0 OR MIT |
 | [polyval](https://github.com/RustCrypto/universal-hashes) | 0.7.3 | Apache-2.0 OR MIT |
 | [portable-atomic](https://github.com/taiki-e/portable-atomic) | 1.15.0 | Apache-2.0 OR MIT |
@@ -518,11 +543,14 @@ through the `@fontsource` packages listed under JavaScript.
 | [tauri-codegen](https://github.com/tauri-apps/tauri) | 2.7.5 | Apache-2.0 OR MIT |
 | [tauri-macros](https://github.com/tauri-apps/tauri) | 2.7.5 | Apache-2.0 OR MIT |
 | [tauri-plugin](https://github.com/tauri-apps/tauri) | 2.7.3 | Apache-2.0 OR MIT |
+| [tauri-plugin-notification](https://github.com/tauri-apps/plugins-workspace) | 2.8.1 | Apache-2.0 OR MIT |
+| [tauri-plugin-single-instance](https://github.com/tauri-apps/plugins-workspace) | 2.5.5 | Apache-2.0 OR MIT |
 | [tauri-plugin-updater](https://github.com/tauri-apps/plugins-workspace) | 2.14.1 | Apache-2.0 OR MIT |
 | [tauri-runtime](https://github.com/tauri-apps/tauri) | 2.12.3 | Apache-2.0 OR MIT |
 | [tauri-runtime-wry](https://github.com/tauri-apps/tauri) | 2.12.4 | Apache-2.0 OR MIT |
 | [tauri-utils](https://github.com/tauri-apps/tauri) | 2.10.3 | Apache-2.0 OR MIT |
 | [tauri-winres](https://github.com/tauri-apps/winres) | 0.3.7 | MIT |
+| [tauri-winrt-notification](https://github.com/tauri-apps/winrt-notification) | 0.8.1 | MIT OR Apache-2.0 |
 | [tempfile](https://github.com/Stebalien/tempfile) | 3.27.0 | MIT OR Apache-2.0 |
 | [tendril](https://github.com/servo/html5ever) | 0.5.1 | MIT OR Apache-2.0 |
 | [thiserror](https://github.com/dtolnay/thiserror) | 1.0.69 | MIT OR Apache-2.0 |
@@ -567,6 +595,7 @@ through the `@fontsource` packages listed under JavaScript.
 | [typed-path](https://github.com/chipsenkbeil/typed-path) | 0.13.0 | MIT OR Apache-2.0 |
 | [typeid](https://github.com/dtolnay/typeid) | 1.0.3 | MIT OR Apache-2.0 |
 | [typenum](https://github.com/paholg/typenum) | 1.20.1 | MIT OR Apache-2.0 |
+| [uds_windows](https://github.com/haraldh/rust_uds_windows) | 1.2.1 | MIT |
 | [unicode-ident](https://github.com/dtolnay/unicode-ident) | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 |
 | [unicode-segmentation](https://github.com/unicode-rs/unicode-segmentation) | 1.13.3 | MIT OR Apache-2.0 |
 | [universal-hash](https://github.com/RustCrypto/traits) | 0.6.1 | MIT OR Apache-2.0 |
@@ -658,6 +687,13 @@ through the `@fontsource` packages listed under JavaScript.
 | [xattr](https://github.com/Stebalien/xattr) | 1.7.0 | MIT OR Apache-2.0 |
 | [yoke](https://github.com/unicode-org/icu4x) | 0.8.4 | Unicode-3.0 |
 | [yoke-derive](https://github.com/unicode-org/icu4x) | 0.8.4 | Unicode-3.0 |
+| [zbus](https://github.com/z-galaxy/zbus/) | 5.19.0 | MIT |
+| [zbus](https://github.com/z-galaxy/zbus/) | 6.3.0 | MIT |
+| [zbus_macros](https://github.com/z-galaxy/zbus/) | 5.19.0 | MIT |
+| [zbus_macros](https://github.com/z-galaxy/zbus/) | 6.3.0 | MIT |
+| [zbus_names](https://github.com/z-galaxy/zbus/) | 4.3.5 | MIT |
+| [zbus_utils](https://github.com/z-galaxy/zbus/) | 6.1.0 | MIT |
+| [zcheapstr](https://github.com/z-galaxy/zcheapstr/) | 1.2.0 | MIT |
 | [zerocopy](https://github.com/google/zerocopy) | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT |
 | [zerocopy-derive](https://github.com/google/zerocopy) | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT |
 | [zerofrom](https://github.com/unicode-org/icu4x) | 0.1.8 | Unicode-3.0 |
@@ -670,6 +706,10 @@ through the `@fontsource` packages listed under JavaScript.
 | [zip](https://github.com/zip-rs/zip2) | 9.6.0 | MIT |
 | [zlib-rs](https://github.com/trifectatechfoundation/zlib-rs) | 0.6.8 | Zlib |
 | [zmij](https://github.com/dtolnay/zmij) | 1.0.23 | MIT |
+| [zruntime](https://github.com/z-galaxy/zruntime) | 0.2.3 | MIT |
+| [zvariant](https://github.com/z-galaxy/zbus/) | 5.15.1 | MIT |
+| [zvariant_derive](https://github.com/z-galaxy/zbus/) | 5.15.1 | MIT |
+| [zvariant_utils](https://github.com/z-galaxy/zbus/) | 4.2.0 | MIT |
 
 ## JavaScript packages (bundled into the app's interface)
 
@@ -692,10 +732,10 @@ through the `@fontsource` packages listed under JavaScript.
 
 Rust:
 
-- MIT OR Apache-2.0: 288
-- MIT: 136
-- Apache-2.0 OR MIT: 92
-- MIT/Apache-2.0: 25
+- MIT OR Apache-2.0: 298
+- MIT: 149
+- Apache-2.0 OR MIT: 108
+- MIT/Apache-2.0: 26
 - Zlib OR Apache-2.0 OR MIT: 18
 - Unicode-3.0: 18
 - Unlicense OR MIT: 9

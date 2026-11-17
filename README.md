@@ -24,18 +24,20 @@ Você escolhe onde os dados ficam: só no seu computador, ou num servidor de sin
   - A senha nunca é enviada: o login usa [OPAQUE](https://datatracker.ietf.org/doc/rfc9807/).
   - Quem opera o servidor não vê hosts, senhas nem chaves.
 - **Feito para times.** Cofres compartilhados com papéis (dono, admin, editor, leitor), convites, aprovação por impressão digital e troca automática da chave quando alguém sai.
-- **Agentes de IA com limites.** Assistentes compatíveis com MCP podem abrir terminais, rodar snippets e organizar hosts, mas nunca leem nem alteram senhas, chaves privadas ou passphrases.
+- **Agentes de IA com limites.** Assistentes compatíveis com MCP podem abrir terminais, rodar os snippets que você liberar e organizar hosts, mas nunca leem nem alteram senhas, chaves privadas ou passphrases.
 
 ## Recursos
 
 - **SSH:**
   - Senha, chave (com ou sem passphrase) e identidades reutilizáveis.
   - Jump hosts encadeados e confirmação da chave do servidor no primeiro acesso.
-  - Keepalive e snippet de inicialização.
+  - Keepalive e snippets que rodam ao conectar, em ordem.
 - **Terminais locais:** PowerShell, Prompt de Comando, WSL e Git Bash são detectados sozinhos. Você também pode criar perfis próprios.
 - **Organização:** grupos com credenciais herdadas, tags, busca e paleta de comandos (`Ctrl+K`).
 - **Redirecionamento de portas:** local (`-L`), remoto (`-R`) e SOCKS (`-D`). O app avisa antes de abrir uma porta para a rede.
-- **Snippets:** scripts salvos que você revisa antes de rodar num terminal.
+- **Snippets:** comandos prontos para rodar com um clique neste computador (PowerShell, Prompt de Comando, WSL, Git Bash) ou em vários hosts SSH ao mesmo tempo, com o resultado num histórico cifrado que fica só no seu computador.
+  - Agendamento por expressão cron, enquanto o Vessel estiver aberto (fechar a janela o deixa na bandeja).
+  - Também pela paleta (`Ctrl+K`), ou colados num terminal aberto.
 - **Sincronização:** em tempo real entre computadores. Conflitos de edição são mesclados campo a campo.
 - **Migração sem perda:** dá para começar só no computador e conectar um servidor depois, ou o contrário. Antes de migrar, o app faz um backup criptografado.
 - **Temas claro e escuro**, bloqueio automático por inatividade e chave de recuperação para quando esquecer a senha.
@@ -159,13 +161,15 @@ vessel-mcp --token <token>
 - **O agente pode, por padrão:** ver o estado do app, os cofres e os itens (sem segredos), abrir terminais, conectar a hosts já confirmados, ler a saída dos terminais e iniciar redirecionamentos locais.
 - **As duas permissões abaixo começam desligadas.**
 - **O agente pode, se você liberar:**
-  - digitar nos terminais, rodar comandos e snippets;
+  - digitar nos terminais e rodar comandos;
   - criar ou editar hosts, grupos, snippets, perfis e redirecionamentos.
+- **Snippets liberados:** o agente roda, no destino salvo, só os snippets em que você marcou "Agentes de IA podem rodar este snippet", mesmo sem a permissão de digitar. Ele não muda o script nem o destino deles.
 - **O agente nunca pode:**
   - ler ou alterar senhas, chaves privadas e passphrases;
   - aceitar a chave de um servidor novo;
   - salvar, sem a permissão de digitar, algo que você executaria depois (snippets, perfis com comando próprio);
   - mudar o tempo de bloqueio automático;
+  - dar a um snippet destino, agendamento ou permissão para agentes;
   - abrir uma porta para a rede;
   - mexer nas confirmações de confiança.
 

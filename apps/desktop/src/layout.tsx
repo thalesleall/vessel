@@ -2,8 +2,9 @@ import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, o
 import { api, shellLabel, type Shell } from "./api";
 import {
   activeTab, itemsOf, lastSync, ownProfiles, section, sessions, setActiveTab, setSection, setStatus, settings, status, syncError, syncing,
-  refreshSessions, checkForUpdate, updateStatus, type Section,
+  refreshSessions, checkForUpdate, updateStatus, scheduler, refreshScheduler, type Section,
 } from "./store";
+import { pasteSnippet, runSnippet, snippetData, targetText } from "./snippetrun";
 import { installUpdate } from "./update";
 import { HostKeyPrompt, TerminalView, connectHost, openProfile } from "./terminal";
 import { Icon, ShellIcon, colorFor, initials } from "./ui";
@@ -159,6 +160,9 @@ function Palette(props: { onClose: () => void }) {
   const [sel, setSel] = createSignal(0);
   const hosts = itemsOf("host");
   const profiles = itemsOf("terminal_profile");
+  const snippets = itemsOf("snippet");
+  /** The terminal in front, where a snippet without a target can be pasted. */
+  const liveTab = () => sessions().find((x) => x.id === activeTab() && x.alive);
   type Entry = { label: string; hint: string; icon: string; badge?: () => JSX.Element; run: () => void };
   const entries = createMemo<Entry[]>(() => {
     const q = query().toLowerCase();
@@ -167,6 +171,14 @@ function Palette(props: { onClose: () => void }) {
         label: h.entity.data.label || h.entity.data.address, hint: h.entity.data.address, icon: "server", badge: () => <ShellIcon ssh size={18} />, run: () => connectHost(h.id),
       })),
       ...profiles().map((p) => ({ label: p.entity.data.label, hint: shellLabel(p.entity.data.shell), icon: "terminal", badge: () => <ShellIcon shell={p.entity.data.shell} size={18} />, run: () => openProfile(p.id) })),
+      ...snippets()
+        .filter((s) => snippetData(s).target.kind !== "none" || liveTab())
+        .map((s) => {
+          const d = snippetData(s);
+          return d.target.kind === "none"
+            ? { label: d.label, hint: "colar no terminal aberto", icon: "code", run: () => { const t = liveTab(); if (t) pasteSnippet(d, t.id); } }
+            : { label: d.label, hint: `rodar em ${targetText(d)}`, icon: "play", run: () => { runSnippet(s); } };
+        }),
       ...nav.map((n) => ({ label: n.label, hint: "ir para", icon: n.icon, run: () => { setSection(n.id); setActiveTab("home"); } })),
     ];
     return (q ? all.filter((e) => `${e.label} ${e.hint}`.toLowerCase().includes(q)) : all).slice(0, 40);
@@ -179,7 +191,7 @@ function Palette(props: { onClose: () => void }) {
   return (
     <div class="palette" ref={paletteEl} onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <div class="palette-box">
-        <input autofocus placeholder="Conectar a um host, abrir um terminal, ir para…" value={query()}
+        <input autofocus placeholder="Conectar a um host, abrir um terminal, rodar um snippet…" value={query()}
           role="combobox" aria-label="Buscar comando" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list"
           aria-activedescendant={entries().length ? `palette-${sel()}` : undefined}
           onInput={(e) => { setQuery(e.currentTarget.value); setSel(0); }}
@@ -232,7 +244,11 @@ export function Workspace() {
     const periodicCheck = setInterval(() => checkForUpdate(), 10 * 60_000);
     const timer = setInterval(async () => {
       const minutes = settings()?.lock_after_minutes ?? 15;
-      if (minutes > 0 && Date.now() - last > minutes * 60_000) setStatus(await api.lock());
+      if (minutes <= 0 || Date.now() - last <= minutes * 60_000) return;
+      // The user chose to keep the vault open while snippets are scheduled (Configurações).
+      await refreshScheduler();
+      if (scheduler()?.keep_unlocked) return;
+      setStatus(await api.lock());
     }, 20_000);
     onCleanup(() => {
       document.removeEventListener("keydown", onKey, true);

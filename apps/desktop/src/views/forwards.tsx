@@ -76,7 +76,7 @@ export function ForwardsView() {
           </For>
         </div>
       </Show>
-      <Show when={editing()}>{(e) => <ForwardEditor item={e() === "new" ? null : (e() as ForwardItem)} onClose={() => setEditing(null)} />}</Show>
+      <Show when={editing()} keyed>{(e) => <ForwardEditor item={e === "new" ? null : (e as ForwardItem)} onClose={() => setEditing(null)} />}</Show>
     </>
   );
 }

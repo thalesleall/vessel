@@ -89,14 +89,20 @@ export function HostsView() {
         </div>
       </Show>
 
-      <Show when={editing()}>{(e) => <HostEditor item={e() === "new" ? null : (e() as HostItem)} group={group()} onClose={() => setEditing(null)} />}</Show>
-      <Show when={editingGroup()}>{(e) => <GroupEditor item={e() === "new" ? null : (e() as GroupItem)} onClose={() => setEditingGroup(null)} />}</Show>
+      <Show when={editing()} keyed>{(e) => <HostEditor item={e === "new" ? null : (e as HostItem)} group={group()} onClose={() => setEditing(null)} />}</Show>
+      <Show when={editingGroup()} keyed>{(e) => <GroupEditor item={e === "new" ? null : (e as GroupItem)} onClose={() => setEditingGroup(null)} />}</Show>
     </>
   );
 }
 
 function HostEditor(props: { item: HostItem | null; group: string | null; onClose: () => void }) {
-  const [d, setD] = createSignal<Host>(props.item ? { ...props.item.entity.data } : { ...blank.host(), group_id: props.group });
+  const initial = (): Host => {
+    const h = props.item ? { ...blank.host(), ...props.item.entity.data } : { ...blank.host(), group_id: props.group };
+    // Older versions only wrote the single field.
+    if (!h.startup_snippet_ids?.length && h.startup_snippet_id) h.startup_snippet_ids = [h.startup_snippet_id];
+    return h;
+  };
+  const [d, setD] = createSignal<Host>(initial());
   const [vault, setVault] = createSignal(props.item?.vault_id ?? defaultVault());
   const [tags, setTags] = createSignal(d().tags.join(", "));
   const [busy, setBusy] = createSignal(false);
@@ -112,7 +118,7 @@ function HostEditor(props: { item: HostItem | null; group: string | null; onClos
     }
     setError(null);
     setBusy(true);
-    const host: Host = { ...d(), address: d().address.trim(), tags: splitTags(tags()), username: d().username?.trim() || null, password: d().password || null };
+    const host: Host = { ...d(), startup_snippet_id: d().startup_snippet_ids[0] ?? null, address: d().address.trim(), tags: splitTags(tags()), username: d().username?.trim() || null, password: d().password || null };
     if (await saveEntity(props.item, vault(), { type: "host", data: host })) props.onClose();
     setBusy(false);
   };
@@ -145,7 +151,9 @@ function HostEditor(props: { item: HostItem | null; group: string | null; onClos
         <div class="section-title" style={{ margin: "6px 0 0" }}><Icon name="route" size={14} />Avançado</div>
         <div class="form-row">
           <Field label="Jump host (ProxyJump)"><ItemSelect kind="host" value={d().jump_host_id} onChange={(v) => set("jump_host_id", v)} exclude={props.item?.id} /></Field>
-          <Field label="Snippet ao conectar"><ItemSelect kind="snippet" value={d().startup_snippet_id} onChange={(v) => set("startup_snippet_id", v)} /></Field>
+          <Field label="Snippets ao conectar" hint="Digitados no terminal logo após conectar, nesta ordem.">
+            <StartupSnippets ids={d().startup_snippet_ids} onChange={(ids) => set("startup_snippet_ids", ids)} />
+          </Field>
         </div>
         <div class="form-row">
           <Field label="Tags" hint="Separadas por vírgula."><input value={tags()} onInput={(e) => setTags(e.currentTarget.value)} placeholder="prod, banco" /></Field>
@@ -177,5 +185,33 @@ function GroupEditor(props: { item: GroupItem | null; onClose: () => void }) {
         <Field label="Cofre"><VaultSelect value={vault()} onChange={setVault} /></Field>
       </div>
     </Modal>
+  );
+}
+
+function StartupSnippets(props: { ids: string[]; onChange: (ids: string[]) => void }) {
+  const snippets = itemsOf("snippet");
+  const label = (id: string) => snippets().find((x) => x.id === id)?.entity.data.label ?? "snippet removido";
+  const move = (i: number, by: number) => {
+    const ids = [...props.ids];
+    [ids[i], ids[i + by]] = [ids[i + by], ids[i]];
+    props.onChange(ids);
+  };
+  return (
+    <div class="startup-list">
+      <For each={props.ids}>
+        {(id, i) => (
+          <div class="startup-item">
+            <span>{i() + 1}. {label(id)}</span>
+            <button class="icon-btn" aria-label={`Subir ${label(id)}`} title="Subir" disabled={i() === 0} onClick={() => move(i(), -1)}><Icon name="arrow-up" size={14} /></button>
+            <button class="icon-btn" aria-label={`Descer ${label(id)}`} title="Descer" disabled={i() === props.ids.length - 1} onClick={() => move(i(), 1)}><Icon name="arrow-down" size={14} /></button>
+            <button class="icon-btn" aria-label={`Remover ${label(id)}`} title="Remover" onClick={() => props.onChange(props.ids.filter((_, j) => j !== i()))}><Icon name="x" size={14} /></button>
+          </div>
+        )}
+      </For>
+      <select value="" aria-label="Adicionar snippet ao conectar" onChange={(e) => { const v = e.currentTarget.value; if (v) props.onChange([...props.ids, v]); e.currentTarget.value = ""; }}>
+        <option value="">{props.ids.length ? "Adicionar outro…" : "Nenhum (escolha para adicionar)"}</option>
+        <For each={snippets().filter((x) => !props.ids.includes(x.id))}>{(x) => <option value={x.id}>{x.entity.data.label}</option>}</For>
+      </select>
+    </div>
   );
 }

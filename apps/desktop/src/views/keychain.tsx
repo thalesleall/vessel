@@ -84,8 +84,8 @@ export function KeychainView() {
         </Show>
       </Show>
 
-      <Show when={editIdentity()}>{(e) => <IdentityEditor item={e() === "new" ? null : (e() as IdentityItem)} onClose={() => setEditIdentity(null)} />}</Show>
-      <Show when={editKey()}>{(e) => <KeyEditor item={e() === "new" ? null : (e() as KeyItem)} onClose={() => setEditKey(null)} />}</Show>
+      <Show when={editIdentity()} keyed>{(e) => <IdentityEditor item={e === "new" ? null : (e as IdentityItem)} onClose={() => setEditIdentity(null)} />}</Show>
+      <Show when={editKey()} keyed>{(e) => <KeyEditor item={e === "new" ? null : (e as KeyItem)} onClose={() => setEditKey(null)} />}</Show>
     </>
   );
 }

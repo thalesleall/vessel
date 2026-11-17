@@ -1,6 +1,6 @@
 import { createMemo, createSignal } from "solid-js";
 import { transition } from "./motion";
-import { api, errorMessage, on, type Item, type Kind, type SessionInfo, type Settings, type Status, type SyncReport, type UpdateStatus, type VaultView } from "./api";
+import { api, errorMessage, on, type Item, type Kind, type RunRecord, type SchedulerStatus, type SessionInfo, type Settings, type Status, type SyncReport, type UpdateStatus, type VaultView } from "./api";
 
 // ---------------------------------------------------------------------------------------------
 // App-wide state
@@ -81,6 +81,28 @@ export async function refreshData() {
   } catch (e) {
     toast(errorMessage(e), "error");
   }
+  refreshSnippetRuns();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Snippet runs and schedules
+// ---------------------------------------------------------------------------------------------
+
+/** The latest run of each snippet (by snippet id), to show its state on the card. */
+export const [lastRuns, setLastRuns] = createSignal<Record<string, RunRecord>>({});
+export const [scheduler, setScheduler] = createSignal<SchedulerStatus | null>(null);
+
+export async function refreshScheduler() {
+  try { setScheduler(await api.schedulerStatus()); } catch { /* locked */ }
+}
+
+export async function refreshSnippetRuns() {
+  await refreshScheduler();
+  try {
+    const latest: Record<string, RunRecord> = {};
+    for (const r of await api.snippetRuns()) if (!latest[r.snippet_id]) latest[r.snippet_id] = r;
+    setLastRuns(latest);
+  } catch { /* locked */ }
 }
 
 export async function refreshSessions() {
@@ -104,6 +126,12 @@ export function wireEvents() {
     await refreshStatus();
   });
   on("terminal://changed", () => refreshSessions());
+  on<RunRecord>("snippets://run", (r) => {
+    const current = lastRuns()[r.snippet_id];
+    if (!current || current.id === r.id || current.started_at <= r.started_at) setLastRuns({ ...lastRuns(), [r.snippet_id]: r });
+    refreshScheduler();
+  });
+  on<boolean>("snippets://paused", () => refreshScheduler());
 }
 
 // ---------------------------------------------------------------------------------------------

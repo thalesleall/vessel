@@ -93,7 +93,21 @@ Para começar do zero, feche o app e apague `%APPDATA%\dev.vessel.desktop`.
 5. **Chave alterada.** Rode `lab.ps1 rekey` e conecte no Bastion.
    - *Esperado:* um alerta vermelho de chave alterada, sem conectar.
    - Aceitar a nova chave atualiza o host conhecido.
-6. **Snippet.** Crie um snippet (ex.: `uname -a`), execute-o num terminal e escolha-o em "Snippet ao conectar" de um host.
+6. **Snippet.** Crie um snippet (ex.: `uname -a`) sem destino, cole-o num terminal e escolha-o, junto com outro, em "Snippets ao conectar" de um host. *Esperado:* os dois rodam ao conectar, na ordem da lista.
+7. **Snippet em hosts.** Dê ao snippet o destino "Hosts SSH" com Bastion e Target e clique em ▶. *Esperado:* os dois rodam em paralelo; o histórico mostra a saída e o código de saída de cada um. Num host cuja chave você nunca confirmou, ou depois de `lab.ps1 rekey`, a execução é recusada sem conectar.
+
+## 3.5 Snippets locais e agendamentos
+
+O que roda e quando tem teste automático: `cargo test -p vessel-desktop --lib` (cron, agendador, execução local com tempo máximo e corte da saída, quem pode rodar o quê) e, com o laboratório, `-- --ignored lab_snippet`.
+
+1. Crie um snippet com destino "Este computador → Prompt de Comando" e script `echo ok` mais `ver` em outra linha. Clique em ▶. *Esperado:* "terminou sem erros"; o histórico mostra as duas saídas.
+2. Mude o script para `ping -n 30 127.0.0.1` e o tempo máximo para 3. *Esperado:* falha por tempo esgotado em cerca de 3 s, sem processo `ping` sobrando.
+3. Volte para `echo ok` e adicione o agendamento `* * * * *`. *Esperado:* o cartão mostra o próximo horário e, a cada minuto, uma execução "Agendado" entra no histórico.
+4. Bloqueie (`Ctrl+L`) por dois minutos e desbloqueie. *Esperado:* um registro "Pulado: o cofre estava bloqueado", e nada roda atrasado; o minuto seguinte roda normalmente.
+5. Feche a janela. *Esperado:* o Vessel continua na bandeja e os agendamentos seguem. Abrir o Vessel pelo menu Iniciar mostra a mesma janela, não uma segunda cópia. "Sair", no menu da bandeja, encerra.
+6. Feche pelo menu da bandeja, espere dois minutos e abra. *Esperado:* um registro "Perdido: o Vessel estava fechado".
+7. Em **Configurações → Segundo plano**, ligue "Iniciar com o Windows" e confira a entrada em Gerenciador de Tarefas → Inicializar. Desligue de novo.
+8. Faça o agendamento falhar (`exit 1`). *Esperado:* uma notificação do Windows.
 
 ## 4. Port forwarding (todos pelo host Bastion)
 
@@ -149,8 +163,9 @@ A redação de segredos, a recusa de credenciais e as regras de permissão têm 
    - *Esperado:* funciona. Num host cuja chave você ainda não confirmou no app, o assistente é recusado e pede que você conecte uma vez.
 6. Peça "qual a senha do host Bastion?" e "troque a senha do Bastion para X".
    - *Esperado:* ele vê só `has_password: true`, e a escrita é recusada.
-7. Bloqueie o app. *Esperado:* as chamadas respondem que o Vessel está bloqueado.
-8. Com `curl`, chame `http://127.0.0.1:47011/mcp` sem token e depois com `-H "Origin: http://exemplo.com"`.
+7. Peça "liste os snippets que você pode rodar" e "rode o snippet X". *Esperado:* lista vazia e recusa. Marque "Agentes de IA podem rodar este snippet" no snippet e peça de novo. *Esperado:* roda no destino salvo, mesmo com "Permitir digitar" desligada, e entra no histórico como "Agente de IA". Peça que ele mude o script desse snippet. *Esperado:* recusa.
+8. Bloqueie o app. *Esperado:* as chamadas respondem que o Vessel está bloqueado.
+9. Com `curl`, chame `http://127.0.0.1:47011/mcp` sem token e depois com `-H "Origin: http://exemplo.com"`.
    - *Esperado:* 401 e 403.
 
 ## 8. Instalador

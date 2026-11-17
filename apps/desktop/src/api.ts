@@ -105,14 +105,58 @@ export interface Host {
   os: string;
   color: string;
   notes: string;
+  /** Older single "snippet on connect": kept equal to the first of startup_snippet_ids. */
   startup_snippet_id: Uuid | null;
+  startup_snippet_ids: Uuid[];
   keepalive_secs: number | null;
 }
 export interface Group { label: string; parent_id: Uuid | null; identity_id: Uuid | null; color: string }
 export interface Identity { label: string; username: string; password: string | null; ssh_key_id: Uuid | null }
 export interface SshKey { label: string; private_key: string; public_key: string; passphrase: string | null; certificate: string | null }
 export interface KnownHost { host: string; key_type: string; fingerprint: string }
-export interface Snippet { label: string; script: string; tags: string[] }
+export type SnippetTarget =
+  | { kind: "none" }
+  | { kind: "local"; shell: Shell }
+  | { kind: "hosts"; host_ids: Uuid[] };
+export interface Schedule { cron: string; enabled: boolean }
+export interface Snippet {
+  label: string;
+  script: string;
+  tags: string[];
+  target: SnippetTarget;
+  confirm: boolean;
+  schedules: Schedule[];
+  agent_allowed: boolean;
+  timeout_secs: number;
+}
+
+export type RunOrigin = "manual" | "scheduled" | "agent";
+export type RunStatus = "running" | "ok" | "failed" | "skipped" | "missed";
+export interface TargetResult {
+  target: string;
+  exit_code: number | null;
+  stdout: string;
+  stderr: string;
+  error: string | null;
+  timed_out: boolean;
+  truncated: boolean;
+  duration_ms: number;
+}
+export interface RunRecord {
+  id: Uuid;
+  snippet_id: Uuid;
+  label: string;
+  origin: RunOrigin;
+  status: RunStatus;
+  target: string;
+  started_at: number;
+  finished_at: number | null;
+  results: TargetResult[];
+  note: string | null;
+}
+export interface ScheduleInfo { snippet_id: Uuid; index: number; cron: string; enabled: boolean; next: number | null; error: string | null }
+export interface SchedulerStatus { paused: boolean; running: Uuid[]; schedules: ScheduleInfo[]; keep_unlocked: boolean }
+export interface BackgroundSettings { close_to_tray: boolean; autostart: boolean; keep_unlocked_for_schedules: boolean }
 export interface PortForward {
   label: string;
   host_id: Uuid | null;
@@ -306,6 +350,16 @@ export const api = {
   mcpActivity: () => invoke<Activity[]>("mcp_activity"),
   updateCheck: () => invoke<UpdateStatus>("update_check"),
   updateInstall: (version: string) => invoke<void>("update_install", { version }),
+
+  runSnippet: (snippetId: Uuid, confirmed = false) => invoke<RunRecord>("run_snippet", { snippetId, confirmed }),
+  snippetRuns: (snippetId?: Uuid) => invoke<RunRecord[]>("snippet_runs", { snippetId: snippetId ?? null }),
+  clearSnippetRuns: (snippetId?: Uuid) => invoke<void>("clear_snippet_runs", { snippetId: snippetId ?? null }),
+  schedulerStatus: () => invoke<SchedulerStatus>("scheduler_status"),
+  setSchedulesPaused: (paused: boolean) => invoke<void>("set_schedules_paused", { paused }),
+  cronPreview: (expr: string) => invoke<number[]>("cron_preview", { expr }),
+  backgroundSettings: () => invoke<BackgroundSettings>("get_background_settings"),
+  setBackgroundSettings: (s: BackgroundSettings) =>
+    invoke<BackgroundSettings>("set_background_settings", { closeToTray: s.close_to_tray, autostart: s.autostart, keepUnlockedForSchedules: s.keep_unlocked_for_schedules }),
 };
 
 export function on<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {
@@ -320,12 +374,12 @@ export const blank = {
   host: (): Host => ({
     label: "", address: "", port: null, protocol: "ssh", group_id: null, identity_id: null, username: "",
     password: null, ssh_key_id: null, jump_host_id: null, tags: [], os: "", color: "", notes: "",
-    startup_snippet_id: null, keepalive_secs: null,
+    startup_snippet_id: null, startup_snippet_ids: [], keepalive_secs: null,
   }),
   group: (): Group => ({ label: "", parent_id: null, identity_id: null, color: "" }),
   identity: (): Identity => ({ label: "", username: "", password: null, ssh_key_id: null }),
   sshKey: (): SshKey => ({ label: "", private_key: "", public_key: "", passphrase: null, certificate: null }),
-  snippet: (): Snippet => ({ label: "", script: "", tags: [] }),
+  snippet: (): Snippet => ({ label: "", script: "", tags: [], target: { kind: "none" }, confirm: false, schedules: [], agent_allowed: false, timeout_secs: 60 }),
   forward: (): PortForward => ({ label: "", host_id: null, kind: "local", bind_address: "127.0.0.1", bind_port: 8080, dest_host: "localhost", dest_port: 80 }),
   profile: (): TerminalProfile => ({ label: "", shell: { kind: "pwsh" }, args: [], cwd: "", env: {}, color: "" }),
 };
