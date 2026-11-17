@@ -104,6 +104,8 @@ export interface Host {
   tags: string[];
   os: string;
   color: string;
+  /** Card icon name (HOST_ICONS); empty shows the initials. */
+  icon: string;
   notes: string;
   /** Older single "snippet on connect": kept equal to the first of startup_snippet_ids. */
   startup_snippet_id: Uuid | null;
@@ -373,7 +375,7 @@ export function on<T>(event: string, handler: (payload: T) => void): Promise<Unl
 export const blank = {
   host: (): Host => ({
     label: "", address: "", port: null, protocol: "ssh", group_id: null, identity_id: null, username: "",
-    password: null, ssh_key_id: null, jump_host_id: null, tags: [], os: "", color: "", notes: "",
+    password: null, ssh_key_id: null, jump_host_id: null, tags: [], os: "", color: "", icon: "", notes: "",
     startup_snippet_id: null, startup_snippet_ids: [], keepalive_secs: null,
   }),
   group: (): Group => ({ label: "", parent_id: null, identity_id: null, color: "" }),

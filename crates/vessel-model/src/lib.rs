@@ -142,6 +142,8 @@ pub struct Host {
     pub tags: Vec<String>,
     pub os: String,
     pub color: String,
+    /// Card icon, by name from the app's icon set. Empty shows the label's initials.
+    pub icon: String,
     pub notes: String,
     /// Older single "snippet on connect". Still written (the first of `startup_snippet_ids`)
     /// so versions that only know this field keep running it.
@@ -508,6 +510,25 @@ mod tests {
         let two = new_id();
         h.startup_snippet_ids = vec![two, one];
         assert_eq!(h.startup_snippets(), vec![two, one]);
+    }
+
+    #[test]
+    fn host_icon_is_optional_and_kept() {
+        // A host saved before the field existed reads with no icon (initials on the card).
+        let old: Host =
+            serde_json::from_value(serde_json::json!({ "label": "web", "address": "web.lan" }))
+                .unwrap();
+        assert_eq!(old.icon, "");
+        let h = Host {
+            icon: "database".into(),
+            color: "#2a8a5a".into(),
+            ..Default::default()
+        };
+        let back: Host = serde_json::from_value(serde_json::to_value(&h).unwrap()).unwrap();
+        assert_eq!(
+            (back.icon.as_str(), back.color.as_str()),
+            ("database", "#2a8a5a")
+        );
     }
 
     #[test]

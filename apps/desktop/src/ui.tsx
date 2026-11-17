@@ -45,6 +45,17 @@ const paths: Record<string, string> = {
   "chevron-left": "M15 6l-6 6 6 6",
   laptop: "M5 5h14v10H5zM2 19h20",
   cloud: "M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9z",
+  "cloud-off": "M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1 0 9zM3 3l18 18",
+  database: "M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
+  globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18",
+  box: "M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9",
+  cpu: "M7 7h10v10H7zM10 10h4v4h-4zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4",
+  home: "M4 11l8-7 8 7M6 10v10h12V10M10 20v-6h4v6",
+  wifi: "M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0M12 19.5h.01",
+  git: "M6 3v12M6 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 9a9 9 0 0 1-9 9",
+  gamepad: "M6 8h12a4 4 0 0 1 4 4v1a4 4 0 0 1-7 2.6h-6A4 4 0 0 1 2 13v-1a4 4 0 0 1 4-4zM7 11v3M5.5 12.5h3M16 12h.01M18 13.5h.01",
+  film: "M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4",
+  mail: "M3 6h18v12H3zM3 6l9 7 9-7",
   unlink: "M9 15l-1.5 1.5a3.5 3.5 0 0 1-5-5L5 9M15 9l1.5-1.5a3.5 3.5 0 0 1 5 5L19 15M4 4l16 16",
 };
 
@@ -263,6 +274,22 @@ export function ConfirmHost() {
     </Show>
   );
 }
+
+/** Icons a host card can show instead of its initials. */
+export const HOST_ICONS: { name: string; label: string }[] = [
+  { name: "server", label: "Servidor" }, { name: "database", label: "Banco de dados" }, { name: "cloud", label: "Nuvem" },
+  { name: "globe", label: "Web" }, { name: "box", label: "Contêiner" }, { name: "cpu", label: "Hardware" },
+  { name: "monitor", label: "Computador" }, { name: "laptop", label: "Notebook" }, { name: "home", label: "Casa" },
+  { name: "wifi", label: "Rede" }, { name: "shield", label: "Segurança" }, { name: "git", label: "Git" },
+  { name: "terminal", label: "Terminal" }, { name: "gamepad", label: "Jogos" }, { name: "film", label: "Mídia" },
+  { name: "mail", label: "E-mail" }, { name: "zap", label: "Energia" },
+];
+/** Card colors to pick from (white text reads on all of them). */
+export const HOST_COLORS: { value: string; label: string }[] = [
+  { value: "#1558c9", label: "Azul" }, { value: "#0f7fa8", label: "Azul petróleo" }, { value: "#2a8a5a", label: "Verde" },
+  { value: "#a8791a", label: "Âmbar" }, { value: "#c2501a", label: "Laranja" }, { value: "#b4263c", label: "Vermelho" },
+  { value: "#8a1f9a", label: "Magenta" }, { value: "#6a2a8c", label: "Roxo" }, { value: "#4b5563", label: "Grafite" },
+];
 
 export function initials(text: string): string {
   const parts = text.trim().split(/[\s.\-_@]+/).filter(Boolean);

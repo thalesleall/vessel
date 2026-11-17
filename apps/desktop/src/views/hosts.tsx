@@ -1,8 +1,8 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import { blank, type Group, type Host, type Item } from "../api";
-import { itemsOf, vaultName, vaults } from "../store";
+import { itemsOf, status, vaultName, vaults } from "../store";
 import { connectHost, connecting } from "../terminal";
-import { Badge, Button, Empty, Field, Icon, Modal, colorFor, initials } from "../ui";
+import { Button, Empty, Field, HOST_COLORS, HOST_ICONS, Icon, Modal, colorFor, initials } from "../ui";
 import { EditorFooter, ItemSelect, VaultSelect, defaultVault, removeItem, saveEntity, splitTags } from "./common";
 import { PORT_MSG, intIn, invalid, isPort } from "../validate";
 
@@ -72,14 +72,14 @@ export function HostsView() {
                 <div class="card">
                   <button class="card-hit" onClick={() => connectHost(h.id)} aria-label={`Conectar a ${title()}`} title="Conectar" />
                   <div class="avatar" style={{ background: d().color || colorFor(title()) }}>
-                    <Show when={connecting() === h.id} fallback={initials(title())}><span class="spinner" /></Show>
+                    <Show when={connecting() === h.id} fallback={d().icon ? <Icon name={d().icon} size={20} /> : initials(title())}><span class="spinner" /></Show>
                   </div>
                   <div class="meta">
                     <div class="name">{title()}</div>
                     <div class="sub">{d().username ? `${d().username}@` : ""}{d().address}{d().port && d().port !== 22 ? `:${d().port}` : ""}</div>
                     <Show when={vaults().length > 1}><div class="sub">{vaultName(h.vault_id)}</div></Show>
                   </div>
-                  <Show when={h.pending}><Badge tone="amber">não enviado</Badge></Show>
+                  <SyncMark pending={h.pending} />
                   <div class="actions">
                     <button class="icon-btn" aria-label="Editar" title="Editar" onClick={() => setEditing(h)}><Icon name="edit" size={15} /></button>
                   </div>
@@ -93,6 +93,51 @@ export function HostsView() {
       <Show when={editing()} keyed>{(e) => <HostEditor item={e === "new" ? null : (e as HostItem)} group={group()} onClose={() => setEditing(null)} />}</Show>
       <Show when={editingGroup()} keyed>{(e) => <GroupEditor item={e === "new" ? null : (e as GroupItem)} onClose={() => setEditingGroup(null)} />}</Show>
     </>
+  );
+}
+
+/** Small cloud in the card corner: green when the host is on the server, gray and crossed out
+ * when it is only on this computer. Hovering says which. */
+function SyncMark(props: { pending: boolean }) {
+  const state = () => status()?.local
+    ? { on: false, text: "Não sincronizado: o Vessel está no modo só neste computador, sem servidor." }
+    : props.pending
+      ? { on: false, text: "Não sincronizado: a última alteração ainda não foi enviada ao servidor." }
+      : { on: true, text: "Sincronizado com o servidor." };
+  return (
+    <span class="sync-mark" classList={{ on: state().on }} role="img" aria-label={state().text} title={state().text}>
+      <Icon name={state().on ? "cloud" : "cloud-off"} size={12} />
+    </span>
+  );
+}
+
+/** Icon and color of the host card, with a preview. */
+function Appearance(props: { title: string; icon: string; color: string; onIcon: (v: string) => void; onColor: (v: string) => void }) {
+  const auto = () => colorFor(props.title || "?");
+  return (
+    <fieldset class="fieldset appearance">
+      <legend class="field-label">Aparência no cartão</legend>
+      <div class="appearance-row">
+        <div class="avatar avatar-preview" style={{ background: props.color || auto() }} aria-hidden="true">
+          {props.icon ? <Icon name={props.icon} size={20} /> : initials(props.title || "?")}
+        </div>
+        <div class="icon-picks" role="radiogroup" aria-label="Ícone">
+          <button type="button" class="pick pick-text" role="radio" aria-checked={!props.icon} classList={{ on: !props.icon }} aria-label="Iniciais do nome" title="Iniciais do nome" onClick={() => props.onIcon("")}>Aa</button>
+          <For each={HOST_ICONS}>{(i) => (
+            <button type="button" class="pick" role="radio" aria-checked={props.icon === i.name} classList={{ on: props.icon === i.name }}
+              aria-label={i.label} title={i.label} onClick={() => props.onIcon(i.name)}><Icon name={i.name} size={16} /></button>
+          )}</For>
+        </div>
+      </div>
+      <div class="color-picks" role="radiogroup" aria-label="Cor">
+        <button type="button" class="swatch swatch-auto" role="radio" aria-checked={!props.color} classList={{ on: !props.color }}
+          style={{ background: auto() }} aria-label="Automática (pelo nome)" title="Automática (pelo nome)" onClick={() => props.onColor("")}>A</button>
+        <For each={HOST_COLORS}>{(c) => (
+          <button type="button" class="swatch" role="radio" aria-checked={props.color === c.value} classList={{ on: props.color === c.value }}
+            style={{ background: c.value }} aria-label={c.label} title={c.label} onClick={() => props.onColor(c.value)} />
+        )}</For>
+      </div>
+    </fieldset>
   );
 }
 
@@ -136,6 +181,7 @@ function HostEditor(props: { item: HostItem | null; group: string | null; onClos
           <Field label="Nome"><input value={d().label} onInput={(e) => set("label", e.currentTarget.value)} placeholder="ex.: Banco de produção" /></Field>
           <Field label="Grupo"><ItemSelect kind="group" value={d().group_id} onChange={(v) => set("group_id", v)} /></Field>
         </div>
+        <Appearance title={d().label || d().address} icon={d().icon ?? ""} color={d().color ?? ""} onIcon={(v) => set("icon", v)} onColor={(v) => set("color", v)} />
         <div class="section-title" style={{ margin: "6px 0 0" }}><Icon name="key" size={14} />Credenciais</div>
         <div class="form-row">
           <Field label="Identidade" hint="Usuário e chave reutilizáveis entre hosts.">

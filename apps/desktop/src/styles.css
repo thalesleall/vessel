@@ -576,3 +576,20 @@ input[aria-invalid="true"] + .field-hint { color: var(--danger); }
 .startup-list { display: grid; gap: 6px; }
 .startup-item { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
 .startup-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------------------------------ host card: sync mark and appearance */
+.card .sync-mark { position: absolute; right: 7px; bottom: 5px; display: flex; color: var(--text-3); opacity: .8; }
+.card > .sync-mark { pointer-events: auto; cursor: help; }
+.card .sync-mark.on { color: var(--ok); opacity: 1; }
+.card .avatar svg { stroke-width: 2; }
+.appearance-row { display: flex; gap: 14px; align-items: flex-start; }
+.avatar-preview { width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 600; font-size: 14px; flex: none; }
+.icon-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick { width: 34px; height: 34px; border-radius: var(--r-md); display: grid; place-items: center; border: 1px solid var(--line); background: var(--surface); color: var(--text-2); cursor: pointer; transition: border-color .12s, background .12s, color .12s; }
+.pick:hover { background: var(--hover); color: var(--text); }
+.pick.on { border-color: var(--structure); background: color-mix(in srgb, var(--structure) 12%, transparent); color: var(--text); }
+.pick-text { font-size: 12px; font-weight: 600; }
+.color-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; outline: 1px solid var(--line); cursor: pointer; color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+.swatch.on { border-color: var(--surface); outline: 2px solid var(--text); }
+.pick:focus-visible, .swatch:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
