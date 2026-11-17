@@ -11,9 +11,8 @@ export function Logo(props: { size?: number }) {
   return (
     <svg class="brand-logo" viewBox="0 0 32 32" width={props.size ?? 32} height={props.size ?? 32} aria-hidden="true">
       <rect width="32" height="32" rx="7" fill="#1558C9" />
-      <path d="M7 6H11L18 13L11 20H7L14 13Z" fill="#FFFFFF" />
-      <rect x="20" y="6" width="5" height="14" fill="#D4FF24" />
-      <path d="M4 23H28L24 27H8Z" fill="#030407" />
+      <path d="M6 6H11L16 16L21 6H26L18 22H14Z" fill="#FFFFFF" />
+      <rect x="10" y="24" width="12" height="3" fill="#D4FF24" />
     </svg>
   );
 }
