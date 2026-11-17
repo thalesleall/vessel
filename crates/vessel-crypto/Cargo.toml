@@ -1,6 +1,6 @@
 [package]
 name = "vessel-crypto"
-version = "0.1.9"
+version = "0.1.10"
 description = "Client-side cryptography for Vessel: record envelopes, key wrapping, vault grants and OPAQUE."
 edition.workspace = true
 license.workspace = true
