@@ -1,6 +1,6 @@
 [package]
 name = "vessel-mcp"
-version = "0.1.10"
+version = "0.1.11"
 description = "stdio bridge to the Vessel desktop app's local MCP server, for MCP clients that only speak stdio."
 edition.workspace = true
 license.workspace = true
