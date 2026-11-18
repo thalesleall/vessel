@@ -13,11 +13,20 @@ export function VaultSelect(props: { value: string; onChange: (id: string) => vo
 
 export function ItemSelect(props: { kind: Kind; value: string | null; onChange: (id: string | null) => void; none?: string; exclude?: string }) {
   const options = () =>
-    items().filter((i) => i.entity.type === props.kind && i.id !== props.exclude).map((i) => ({ id: i.id, label: labelOf(i) }));
+    items().filter((i) => i.entity.type === props.kind && i.id !== props.exclude)
+      .map((i) => ({ id: i.id, label: labelOf(i), folder: i.entity.type === "ssh_key" ? (i.entity.data.folder ?? "").trim() : "" }));
+  // SSH keys filed in folders are listed under them.
+  const folders = () => [...new Set(options().map((o) => o.folder))].sort((a, b) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b)));
   return (
     <select value={props.value ?? ""} onChange={(e) => props.onChange(e.currentTarget.value || null)}>
       <option value="">{props.none ?? "Nenhum"}</option>
-      <For each={options()}>{(o) => <option value={o.id}>{o.label}</option>}</For>
+      <Show when={folders().some((f) => f)} fallback={<For each={options()}>{(o) => <option value={o.id}>{o.label}</option>}</For>}>
+        <For each={folders()}>{(f) => (
+          <optgroup label={f || "Sem pasta"}>
+            <For each={options().filter((o) => o.folder === f)}>{(o) => <option value={o.id}>{o.label}</option>}</For>
+          </optgroup>
+        )}</For>
+      </Show>
     </select>
   );
 }

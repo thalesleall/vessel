@@ -33,7 +33,7 @@ Você escolhe onde os dados ficam: só no seu computador, ou num servidor de sin
   - Jump hosts encadeados e confirmação da chave do servidor no primeiro acesso.
   - Keepalive e snippets que rodam ao conectar, em ordem.
 - **Terminais locais:** PowerShell, Prompt de Comando, WSL e Git Bash são detectados sozinhos. Você também pode criar perfis próprios.
-- **Organização:** grupos com credenciais herdadas, tags, busca e paleta de comandos (`Ctrl+K`).
+- **Organização:** grupos de hosts com credenciais herdadas, pastas de chaves SSH, tags, busca e paleta de comandos (`Ctrl+K`).
 - **Redirecionamento de portas:** local (`-L`), remoto (`-R`) e SOCKS (`-D`). O app avisa antes de abrir uma porta para a rede.
 - **Snippets:** comandos prontos para rodar com um clique neste computador (PowerShell, Prompt de Comando, WSL, Git Bash) ou em vários hosts SSH ao mesmo tempo, com o resultado num histórico cifrado que fica só no seu computador.
   - Agendamento por expressão cron, enquanto o Vessel estiver aberto (fechar a janela o deixa na bandeja).

@@ -205,6 +205,8 @@ pub struct SshKey {
     pub public_key: String,
     pub passphrase: Option<String>,
     pub certificate: Option<String>,
+    /// Folder the key is filed under in the key list; empty for none.
+    pub folder: String,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -510,6 +512,15 @@ mod tests {
         let two = new_id();
         h.startup_snippet_ids = vec![two, one];
         assert_eq!(h.startup_snippets(), vec![two, one]);
+    }
+
+    #[test]
+    fn key_folder_is_optional_and_kept() {
+        let old: SshKey = serde_json::from_value(serde_json::json!({ "label": "deploy", "private_key": "k" })).unwrap();
+        assert_eq!(old.folder, "");
+        let k = SshKey { folder: "Clientes".into(), ..Default::default() };
+        let back: SshKey = serde_json::from_value(serde_json::to_value(&k).unwrap()).unwrap();
+        assert_eq!(back.folder, "Clientes");
     }
 
     #[test]

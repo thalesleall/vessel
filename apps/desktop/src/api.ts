@@ -114,7 +114,9 @@ export interface Host {
 }
 export interface Group { label: string; parent_id: Uuid | null; identity_id: Uuid | null; color: string }
 export interface Identity { label: string; username: string; password: string | null; ssh_key_id: Uuid | null }
-export interface SshKey { label: string; private_key: string; public_key: string; passphrase: string | null; certificate: string | null }
+export interface SshKey { label: string; private_key: string; public_key: string; passphrase: string | null; certificate: string | null;
+  /** Folder in the key list; empty for none. */
+  folder?: string }
 export interface KnownHost { host: string; key_type: string; fingerprint: string }
 /** An AWS instance a snippet runs on, kept on this computer only (never in the vault). */
 export interface AwsSnippetTarget { profile: string; region: string; instance_id: string; label: string; windows: boolean }
@@ -448,7 +450,7 @@ export const blank = {
   }),
   group: (): Group => ({ label: "", parent_id: null, identity_id: null, color: "" }),
   identity: (): Identity => ({ label: "", username: "", password: null, ssh_key_id: null }),
-  sshKey: (): SshKey => ({ label: "", private_key: "", public_key: "", passphrase: null, certificate: null }),
+  sshKey: (): SshKey => ({ label: "", private_key: "", public_key: "", passphrase: null, certificate: null, folder: "" }),
   snippet: (): Snippet => ({ label: "", script: "", tags: [], target: { kind: "none" }, confirm: false, schedules: [], agent_allowed: false, timeout_secs: 60 }),
   forward: (): PortForward => ({ label: "", host_id: null, kind: "local", bind_address: "127.0.0.1", bind_port: 8080, dest_host: "localhost", dest_port: 80 }),
   profile: (): TerminalProfile => ({ label: "", shell: { kind: "pwsh" }, args: [], cwd: "", env: {}, color: "" }),

@@ -694,3 +694,13 @@ input[aria-invalid="true"] + .field-hint { color: var(--danger); }
 .aws-summary-tools { margin-left: auto; display: inline-flex; gap: 16px; }
 .aws-summary-tools .link-like { color: var(--text-2); font-size: 12.5px; }
 .aws-summary-tools .link-like:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ------------------------------------------------------------------ key folders */
+.chip-count { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.key-folder { margin-bottom: 18px; }
+.key-folder-title { margin: 0 0 8px; }
+.key-folder-title .link-like { color: var(--text-2); font-weight: 600; font-size: var(--fs-sm); padding: 0; }
+.key-folder-title .link-like:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.key-folder-title .chip-count { font-weight: 400; }
+.key-folder-title .icon-btn { opacity: 0; transition: opacity .12s; }
+.key-folder-title:hover .icon-btn, .key-folder-title .icon-btn:focus-visible { opacity: 1; }
