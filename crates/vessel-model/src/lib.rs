@@ -516,9 +516,14 @@ mod tests {
 
     #[test]
     fn key_folder_is_optional_and_kept() {
-        let old: SshKey = serde_json::from_value(serde_json::json!({ "label": "deploy", "private_key": "k" })).unwrap();
+        let old: SshKey =
+            serde_json::from_value(serde_json::json!({ "label": "deploy", "private_key": "k" }))
+                .unwrap();
         assert_eq!(old.folder, "");
-        let k = SshKey { folder: "Clientes".into(), ..Default::default() };
+        let k = SshKey {
+            folder: "Clientes".into(),
+            ..Default::default()
+        };
         let back: SshKey = serde_json::from_value(serde_json::to_value(&k).unwrap()).unwrap();
         assert_eq!(back.folder, "Clientes");
     }
